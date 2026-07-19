@@ -12,6 +12,8 @@ import urllib.request
 from ._native import (
     address,
     valid_address,
+    mnemonic_from_seed,
+    seed_from_mnemonic,
     sign_transfer,
     sign_call,
     submit_body,
@@ -24,6 +26,8 @@ __all__ = [
     "Client",
     "address",
     "valid_address",
+    "mnemonic_from_seed",
+    "seed_from_mnemonic",
     "sign_transfer",
     "sign_call",
     "submit_body",

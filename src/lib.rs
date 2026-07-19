@@ -22,6 +22,19 @@ fn valid_address(address: &str) -> bool {
     qcore::valid_address(address)
 }
 
+/// The recovery phrase for a master seed, twenty four words of the standard English list.
+#[pyfunction]
+fn mnemonic_from_seed(seed_hex: &str) -> PyResult<String> {
+    Ok(qcore::mnemonic_from_seed(&seed(seed_hex)?))
+}
+
+/// The master seed a recovery phrase carries, as hex, or an error if the phrase is bad.
+#[pyfunction]
+fn seed_from_mnemonic(phrase: &str) -> PyResult<String> {
+    let seed = qcore::seed_from_mnemonic(phrase).map_err(PyValueError::new_err)?;
+    Ok(qcore::json::to_hex(&seed))
+}
+
 /// Build and sign a native transfer. Returns a JSON string with the sender, the id, and
 #[pyfunction]
 fn sign_transfer(
@@ -97,6 +110,8 @@ fn block_by_height_body(height: u64) -> String {
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(address, m)?)?;
     m.add_function(wrap_pyfunction!(valid_address, m)?)?;
+    m.add_function(wrap_pyfunction!(mnemonic_from_seed, m)?)?;
+    m.add_function(wrap_pyfunction!(seed_from_mnemonic, m)?)?;
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;
     m.add_function(wrap_pyfunction!(sign_call, m)?)?;
     m.add_function(wrap_pyfunction!(submit_body, m)?)?;
