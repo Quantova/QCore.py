@@ -12,6 +12,7 @@ import urllib.request
 from ._native import (
     address,
     sign_transfer,
+    sign_call,
     submit_body,
     account_body,
     transaction_body,
@@ -22,6 +23,7 @@ __all__ = [
     "Client",
     "address",
     "sign_transfer",
+    "sign_call",
     "submit_body",
     "account_body",
     "transaction_body",
@@ -83,7 +85,28 @@ class Client:
                 to,
                 int(amount),
                 int(acct["nonce"]),
-                int(info["fee"]["transfer_qgas"]),
+                int(info["fee"]["transfer_quon"]),
+            )
+        )
+        outcome = self.submit(signed["tx_hex"])
+        return signed, outcome
+
+    def call(self, seed_hex, index, target, args_hex, meter_limit):
+        """Read the fee and the nonce, sign a call to a target in the core, and submit. A
+        contract deploy or call runs the same path as a transfer, only the target and the
+        arguments differ."""
+        info = self.node_info()
+        sender = address(seed_hex, index)
+        acct = self.account(sender)
+        signed = json.loads(
+            sign_call(
+                seed_hex,
+                index,
+                target,
+                args_hex,
+                int(acct["nonce"]),
+                int(meter_limit),
+                int(info["fee"]["transfer_quon"]),
             )
         )
         outcome = self.submit(signed["tx_hex"])

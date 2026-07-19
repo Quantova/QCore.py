@@ -38,6 +38,30 @@ fn sign_transfer(
     .render())
 }
 
+/// Build and sign a call to a target with its arguments already encoded as hex. A contract
+#[pyfunction]
+fn sign_call(
+    seed_hex: &str,
+    index: u64,
+    target: &str,
+    args_hex: &str,
+    nonce: u64,
+    meter_limit: u64,
+    fee: u128,
+) -> PyResult<String> {
+    let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
+    let signed = qcore::sign_call(&seed(seed_hex)?, index, target, args, nonce, meter_limit, fee);
+    Ok(qcore::json::object(vec![
+        ("from", qcore::json::Json::str(signed.from)),
+        ("tx_id", qcore::json::Json::str(signed.tx_id)),
+        (
+            "tx_hex",
+            qcore::json::Json::str(qcore::json::to_hex(&signed.tx_bytes)),
+        ),
+    ])
+    .render())
+}
+
 /// The request body for submit_transaction, from the transaction hex.
 #[pyfunction]
 fn submit_body(tx_hex: &str) -> PyResult<String> {
@@ -67,6 +91,7 @@ fn block_by_height_body(height: u64) -> String {
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(address, m)?)?;
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;
+    m.add_function(wrap_pyfunction!(sign_call, m)?)?;
     m.add_function(wrap_pyfunction!(submit_body, m)?)?;
     m.add_function(wrap_pyfunction!(account_body, m)?)?;
     m.add_function(wrap_pyfunction!(transaction_body, m)?)?;
