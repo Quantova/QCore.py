@@ -16,6 +16,12 @@ fn address(seed_hex: &str, index: u64) -> PyResult<String> {
     Ok(qcore::account_address(&seed(seed_hex)?, index))
 }
 
+/// Whether an address parses as a Quantova q1 address, so a caller can check a recipient or a
+#[pyfunction]
+fn valid_address(address: &str) -> bool {
+    qcore::valid_address(address)
+}
+
 /// Build and sign a native transfer. Returns a JSON string with the sender, the id, and
 #[pyfunction]
 fn sign_transfer(
@@ -90,6 +96,7 @@ fn block_by_height_body(height: u64) -> String {
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(address, m)?)?;
+    m.add_function(wrap_pyfunction!(valid_address, m)?)?;
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;
     m.add_function(wrap_pyfunction!(sign_call, m)?)?;
     m.add_function(wrap_pyfunction!(submit_body, m)?)?;
