@@ -6,6 +6,7 @@ the documented response fields, so nothing is signed or built in Python.
 """
 
 import json
+import secrets
 import urllib.error
 import urllib.request
 
@@ -22,8 +23,16 @@ from ._native import (
     block_by_height_body,
 )
 
+def generate_seed():
+    """Generate a fresh thirty two byte master seed from the platform cryptographic random source,
+    returned as a hex string. A wallet calls this once to create a new key rather than rolling its own
+    random source and risking a weak one. secrets is Python's cryptographically strong source."""
+    return secrets.token_bytes(32).hex()
+
+
 __all__ = [
     "Client",
+    "generate_seed",
     "address",
     "valid_address",
     "mnemonic_from_seed",

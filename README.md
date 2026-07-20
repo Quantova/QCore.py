@@ -24,6 +24,15 @@ Quantova is post quantum from the ground. There is no elliptic curve anywhere in
 
 Quantova shares no wire, no address, and no unit with any other chain, and QCore.py speaks only Quantova. The address is a q1 Bech32m string over a full post quantum key, never a hex twenty byte address and never an SS58 string. Money is counted in Quon, the smallest unit, at one million Quon to one QTOV, and it comes back as a decimal string that you convert with int only where a whole number is needed. The wire is the Quantova gateway, an HTTP POST to a named method under a version prefix with a flat JSON body, not Ethereum JSON RPC and not a Substrate WebSocket. The transaction encoding is Quantova's own canonical codec, not RLP and not SCALE. The signatures come from Q Crypto, Quantova's own implementation of the lattice and hash standards written from scratch, not a borrowed library.
 
+## Creating a wallet
+
+```python
+import qcore
+
+seed = qcore.generate_seed()             # thirty two random bytes as hex from the platform source
+phrase = qcore.mnemonic_from_seed(seed)  # the only backup, shown once and kept on the device
+```
+
 ## Using it
 
 ```python
