@@ -48,6 +48,18 @@ def _loads(raw):
         raise RuntimeError("the gateway returned a response that is not valid JSON")
 
 
+def _fee_ceiling(max_fee):
+    """Validate the caller's fee ceiling before any network call, so a missing or malformed maximum
+    fails fast with a clear message. The ceiling is a non negative integer number of Quon."""
+    try:
+        ceiling = int(max_fee)
+    except (TypeError, ValueError):
+        raise ValueError("the maximum fee must be an integer number of Quon")
+    if ceiling < 0:
+        raise ValueError("the maximum fee cannot be negative")
+    return ceiling
+
+
 class Client:
     """A client bound to a gateway base url, for example http://127.0.0.1:8645."""
 
@@ -100,11 +112,12 @@ class Client:
         Nothing is signed in Python."""
         if not valid_address(to):
             raise ValueError("the recipient is not a q1 address")
+        ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
         if fee is None:
             raise RuntimeError("the gateway did not report a transfer fee")
-        if int(fee) > int(max_fee):
+        if int(fee) > ceiling:
             raise ValueError(
                 f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
             )
@@ -124,11 +137,12 @@ class Client:
         max_fee and the shortcut refuses a gateway fee above it."""
         if not valid_address(target):
             raise ValueError("the target is not a q1 address")
+        ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
         if fee is None:
             raise RuntimeError("the gateway did not report a transfer fee")
-        if int(fee) > int(max_fee):
+        if int(fee) > ceiling:
             raise ValueError(
                 f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
             )
