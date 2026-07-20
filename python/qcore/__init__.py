@@ -93,16 +93,21 @@ class Client:
     def address(self, seed_hex, index):
         return address(seed_hex, index)
 
-    def transfer(self, seed_hex, index, to, amount):
-        """Read the fee and the nonce, sign in the core, and submit. The fee comes from the
-        gateway, so a wallet reads node info, shows the fee to the user, and signs with
-        sign_transfer directly rather than trusting this shortcut. Nothing is signed in Python."""
+    def transfer(self, seed_hex, index, to, amount, max_fee):
+        """Read the fee and the nonce, sign in the core, and submit. The caller passes the highest
+        fee it will accept as max_fee, and the shortcut refuses to sign if the gateway reports a fee
+        above it, so a hostile or rewritten gateway cannot inflate the fee and drain the signer.
+        Nothing is signed in Python."""
         if not valid_address(to):
             raise ValueError("the recipient is not a q1 address")
         info = self.node_info()
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
         if fee is None:
             raise RuntimeError("the gateway did not report a transfer fee")
+        if int(fee) > int(max_fee):
+            raise ValueError(
+                f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
+            )
         sender = address(seed_hex, index)
         acct = self.account(sender)
         nonce = acct.get("nonce") if isinstance(acct, dict) else None
@@ -112,16 +117,21 @@ class Client:
         outcome = self.submit(signed["tx_hex"])
         return signed, outcome
 
-    def call(self, seed_hex, index, target, args_hex, meter_limit):
+    def call(self, seed_hex, index, target, args_hex, meter_limit, max_fee):
         """Read the fee and the nonce, sign a call to a target in the core, and submit. A
         contract deploy or call runs the same path as a transfer, only the target and the
-        arguments differ. The fee caveat above applies here too."""
+        arguments differ. Like transfer, the caller passes the highest fee it will accept as
+        max_fee and the shortcut refuses a gateway fee above it."""
         if not valid_address(target):
             raise ValueError("the target is not a q1 address")
         info = self.node_info()
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
         if fee is None:
             raise RuntimeError("the gateway did not report a transfer fee")
+        if int(fee) > int(max_fee):
+            raise ValueError(
+                f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
+            )
         sender = address(seed_hex, index)
         acct = self.account(sender)
         nonce = acct.get("nonce") if isinstance(acct, dict) else None
