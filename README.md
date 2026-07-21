@@ -47,6 +47,11 @@ to = client.address(seed, 1)
 # and the core refuses to sign a fee the gateway reports above it, so a gateway
 # cannot inflate the fee and drain the account.
 info = client.node_info()
+
+# A fresh account funded by a transfer arrives with a balance but no key on the
+# chain, so it signs this once to install its public key before its first send.
+client.register(seed, 0, info["fee"]["transfer_quon"])
+
 signed, outcome = client.transfer(seed, 0, to, 1000, info["fee"]["transfer_quon"])
 status = client.transaction(signed["tx_id"])
 ```

@@ -81,6 +81,21 @@ fn sign_call(
     .render())
 }
 
+/// Build and sign a key registration. The account's public key is the argument and the target is
+#[pyfunction]
+fn sign_register(seed_hex: &str, index: u64, nonce: u64, fee: u128) -> PyResult<String> {
+    let signed = qcore::sign_register(&seed(seed_hex)?, index, nonce, fee);
+    Ok(qcore::json::object(vec![
+        ("from", qcore::json::Json::str(signed.from)),
+        ("tx_id", qcore::json::Json::str(signed.tx_id)),
+        (
+            "tx_hex",
+            qcore::json::Json::str(qcore::json::to_hex(&signed.tx_bytes)),
+        ),
+    ])
+    .render())
+}
+
 /// The request body for submit_transaction, from the transaction hex.
 #[pyfunction]
 fn submit_body(tx_hex: &str) -> PyResult<String> {
@@ -114,6 +129,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(seed_from_mnemonic, m)?)?;
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;
     m.add_function(wrap_pyfunction!(sign_call, m)?)?;
+    m.add_function(wrap_pyfunction!(sign_register, m)?)?;
     m.add_function(wrap_pyfunction!(submit_body, m)?)?;
     m.add_function(wrap_pyfunction!(account_body, m)?)?;
     m.add_function(wrap_pyfunction!(transaction_body, m)?)?;

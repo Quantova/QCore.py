@@ -17,6 +17,7 @@ from ._native import (
     seed_from_mnemonic,
     sign_transfer,
     sign_call,
+    sign_register,
     submit_body,
     account_body,
     transaction_body,
@@ -39,6 +40,7 @@ __all__ = [
     "seed_from_mnemonic",
     "sign_transfer",
     "sign_call",
+    "sign_register",
     "submit_body",
     "account_body",
     "transaction_body",
@@ -136,6 +138,31 @@ class Client:
         if nonce is None:
             raise RuntimeError("the gateway did not report a nonce")
         signed = _loads(sign_transfer(seed_hex, index, to, int(amount), int(nonce), int(fee)))
+        outcome = self.submit(signed["tx_hex"])
+        return signed, outcome
+
+    def register(self, seed_hex, index, max_fee):
+        """Read the fee and the nonce, sign a key registration in the core, and submit. An account
+        funded by a transfer arrives with a balance but no key on the chain and cannot sign until it
+        registers, so it signs this once to install its public key before its first send. Like
+        transfer, the caller passes the highest fee it will accept as max_fee, and the shortcut
+        refuses to sign if the gateway reports a fee above it, so a hostile or rewritten gateway
+        cannot inflate the fee and drain the signer. Nothing is signed in Python."""
+        ceiling = _fee_ceiling(max_fee)
+        info = self.node_info()
+        fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
+        if fee is None:
+            raise RuntimeError("the gateway did not report a transfer fee")
+        if int(fee) > ceiling:
+            raise ValueError(
+                f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
+            )
+        sender = address(seed_hex, index)
+        acct = self.account(sender)
+        nonce = acct.get("nonce") if isinstance(acct, dict) else None
+        if nonce is None:
+            raise RuntimeError("the gateway did not report a nonce")
+        signed = _loads(sign_register(seed_hex, index, int(nonce), int(fee)))
         outcome = self.submit(signed["tx_hex"])
         return signed, outcome
 
