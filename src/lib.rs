@@ -1,5 +1,3 @@
-//! The Python binding for the Quantova client core.
-
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -10,32 +8,27 @@ fn seed(seed_hex: &str) -> PyResult<[u8; 32]> {
         .map_err(|_| PyValueError::new_err("a seed is 32 bytes of hex"))
 }
 
-/// The address of the account derived from a master seed and an index.
 #[pyfunction]
 fn address(seed_hex: &str, index: u64) -> PyResult<String> {
     Ok(qcore::account_address(&seed(seed_hex)?, index))
 }
 
-/// Whether an address parses as a Quantova q1 address, so a caller can check a recipient or a
 #[pyfunction]
 fn valid_address(address: &str) -> bool {
     qcore::valid_address(address)
 }
 
-/// The recovery phrase for a master seed, twenty four words of the standard English list.
 #[pyfunction]
 fn mnemonic_from_seed(seed_hex: &str) -> PyResult<String> {
     Ok(qcore::mnemonic_from_seed(&seed(seed_hex)?))
 }
 
-/// The master seed a recovery phrase carries, as hex, or an error if the phrase is bad.
 #[pyfunction]
 fn seed_from_mnemonic(phrase: &str) -> PyResult<String> {
     let seed = qcore::seed_from_mnemonic(phrase).map_err(PyValueError::new_err)?;
     Ok(qcore::json::to_hex(&seed))
 }
 
-/// Build and sign a native transfer. Returns a JSON string with the sender, the id, and
 #[pyfunction]
 fn sign_transfer(
     seed_hex: &str,
@@ -57,7 +50,6 @@ fn sign_transfer(
     .render())
 }
 
-/// Build and sign a call to a target with its arguments already encoded as hex. A contract
 #[pyfunction]
 fn sign_call(
     seed_hex: &str,
@@ -81,7 +73,6 @@ fn sign_call(
     .render())
 }
 
-/// Build and sign a key registration. The account's public key is the argument and the target is
 #[pyfunction]
 fn sign_register(seed_hex: &str, index: u64, nonce: u64, fee: u128) -> PyResult<String> {
     let signed = qcore::sign_register(&seed(seed_hex)?, index, nonce, fee);
@@ -96,26 +87,22 @@ fn sign_register(seed_hex: &str, index: u64, nonce: u64, fee: u128) -> PyResult<
     .render())
 }
 
-/// The request body for submit_transaction, from the transaction hex.
 #[pyfunction]
 fn submit_body(tx_hex: &str) -> PyResult<String> {
     let bytes = qcore::json::from_hex(tx_hex).map_err(PyValueError::new_err)?;
     Ok(qcore::submit_body(&bytes))
 }
 
-/// The request body for get_account.
 #[pyfunction]
 fn account_body(address: &str) -> String {
     qcore::account_body(address)
 }
 
-/// The request body for get_transaction.
 #[pyfunction]
 fn transaction_body(tx_id: &str) -> String {
     qcore::transaction_body(tx_id)
 }
 
-/// The request body for get_block by height.
 #[pyfunction]
 fn block_by_height_body(height: u64) -> String {
     qcore::block_by_height_body(height)

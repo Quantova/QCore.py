@@ -1,8 +1,3 @@
-# Prove the fee ceiling with no running gateway, so this runs anywhere. A small mock gateway
-# reports a fee, and the client must submit only when the fee is at or below the ceiling the
-# caller allowed, must refuse and never submit when the fee is above it, and must reject a
-# missing or malformed ceiling before it ever touches the network. Run with: python3 test_fee_cap.py
-
 import json
 import os
 import sys
@@ -12,7 +7,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 try:
     import qcore
 except ModuleNotFoundError:
-    # Fall back to the in tree package so the test runs from the repo without an install.
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
     import qcore
 
@@ -59,7 +53,6 @@ def main():
     seed = "0b" * 32
     to = qcore.address(seed, 1)
 
-    # A fee at or below the ceiling signs and submits once.
     state["fee"] = "100"
     _, outcome = client.transfer(seed, 0, to, 1000, 1000)
     if outcome["verdict"] != "accepted":
@@ -67,7 +60,6 @@ def main():
     if state["submitted"] != 1:
         fail("an allowed transfer submits exactly once")
 
-    # A fee above the ceiling is refused and never submits.
     state["fee"] = "5000"
     refused = False
     try:
@@ -81,13 +73,11 @@ def main():
     if state["submitted"] != 1:
         fail("a refused transfer must never submit")
 
-    # The ceiling is inclusive at the boundary.
     state["fee"] = "1000"
     _, outcome = client.transfer(seed, 0, to, 1000, 1000)
     if outcome["verdict"] != "accepted" or state["submitted"] != 2:
         fail("a fee equal to the ceiling is allowed")
 
-    # A missing or malformed ceiling fails before any network call.
     for bad in (None, "abc", -1):
         threw = False
         try:

@@ -1,9 +1,4 @@
-"""The Quantova client core for Python.
-
-The key derivation, the post quantum signing, and every RPC request body come from the
-Rust core, exposed here as the native extension. This module only does the HTTP and reads
-the documented response fields, so nothing is signed or built in Python.
-"""
+"""The Quantova client core for Python."""
 
 import json
 import secrets
@@ -25,9 +20,6 @@ from ._native import (
 )
 
 def generate_seed():
-    """Generate a fresh thirty two byte master seed from the platform cryptographic random source,
-    returned as a hex string. A wallet calls this once to create a new key rather than rolling its own
-    random source and risking a weak one. secrets is Python's cryptographically strong source."""
     return secrets.token_bytes(32).hex()
 
 
@@ -47,8 +39,6 @@ __all__ = [
     "block_by_height_body",
 ]
 
-# The largest reply the client will hold, so a hostile gateway cannot exhaust memory with an
-# unbounded body.
 _MAX_RESPONSE = 8 * 1024 * 1024
 
 
@@ -60,8 +50,6 @@ def _loads(raw):
 
 
 def _fee_ceiling(max_fee):
-    """Validate the caller's fee ceiling before any network call, so a missing or malformed maximum
-    fails fast with a clear message. The ceiling is a non negative integer number of Quon."""
     try:
         ceiling = int(max_fee)
     except (TypeError, ValueError):
@@ -72,8 +60,6 @@ def _fee_ceiling(max_fee):
 
 
 class Client:
-    """A client bound to a gateway base url, for example http://127.0.0.1:8645."""
-
     def __init__(self, base):
         self.base = str(base).rstrip("/")
 
@@ -117,12 +103,8 @@ class Client:
         return address(seed_hex, index)
 
     def transfer(self, seed_hex, index, to, amount, max_fee):
-        """Read the fee and the nonce, sign in the core, and submit. The caller passes the highest
-        fee it will accept as max_fee, and the shortcut refuses to sign if the gateway reports a fee
-        above it, so a hostile or rewritten gateway cannot inflate the fee and drain the signer.
-        Nothing is signed in Python."""
         if not valid_address(to):
-            raise ValueError("the recipient is not a q1 address")
+            raise ValueError("the recipient is not a Q1 address")
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
@@ -142,12 +124,6 @@ class Client:
         return signed, outcome
 
     def register(self, seed_hex, index, max_fee):
-        """Read the fee and the nonce, sign a key registration in the core, and submit. An account
-        funded by a transfer arrives with a balance but no key on the chain and cannot sign until it
-        registers, so it signs this once to install its public key before its first send. Like
-        transfer, the caller passes the highest fee it will accept as max_fee, and the shortcut
-        refuses to sign if the gateway reports a fee above it, so a hostile or rewritten gateway
-        cannot inflate the fee and drain the signer. Nothing is signed in Python."""
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
@@ -167,12 +143,8 @@ class Client:
         return signed, outcome
 
     def call(self, seed_hex, index, target, args_hex, meter_limit, max_fee):
-        """Read the fee and the nonce, sign a call to a target in the core, and submit. A
-        contract deploy or call runs the same path as a transfer, only the target and the
-        arguments differ. Like transfer, the caller passes the highest fee it will accept as
-        max_fee and the shortcut refuses a gateway fee above it."""
         if not valid_address(target):
-            raise ValueError("the target is not a q1 address")
+            raise ValueError("the target is not a Q1 address")
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None

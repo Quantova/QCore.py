@@ -7,12 +7,9 @@ description = "The Python binding for the Quantova client core, generated over Q
 repository = "https://github.com/Quantova/QCore.py"
 
 [lib]
-# The native extension module, imported by the qcore Python package as qcore._native.
 name = "_native"
 crate-type = ["cdylib"]
 
 [dependencies]
-# The one core. Its pure part, no input or output, is what the extension exposes, so the
-# client feature is off and Python does the transport.
 qcore = { path = "../QCore.rs", default-features = false }
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py38"] }
