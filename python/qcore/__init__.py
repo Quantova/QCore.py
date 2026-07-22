@@ -1,8 +1,10 @@
 """The Quantova client core for Python."""
 
+import ipaddress
 import json
 import secrets
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from ._native import (
@@ -49,6 +51,30 @@ def _loads(raw):
         raise RuntimeError("the gateway returned a response that is not valid JSON")
 
 
+def _is_loopback(host):
+    if host is None:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _require_safe_transport(base):
+    parts = urllib.parse.urlsplit(base)
+    if parts.scheme not in ("http", "https"):
+        raise ValueError("the gateway base must start with http:// or https://")
+    if parts.scheme == "http" and not _is_loopback(parts.hostname):
+        raise ValueError(
+            f"refusing plaintext http to a non loopback gateway ({parts.hostname}); its fee "
+            "and nonce would be unauthenticated and rewritable to drain funds, use https or a "
+            "loopback node"
+        )
+    return base
+
+
 def _fee_ceiling(max_fee):
     try:
         ceiling = int(max_fee)
@@ -61,7 +87,7 @@ def _fee_ceiling(max_fee):
 
 class Client:
     def __init__(self, base):
-        self.base = str(base).rstrip("/")
+        self.base = _require_safe_transport(str(base)).rstrip("/")
 
     def _call(self, method, body):
         req = urllib.request.Request(

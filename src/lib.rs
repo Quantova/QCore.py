@@ -38,6 +38,9 @@ fn sign_transfer(
     nonce: u64,
     fee: u128,
 ) -> PyResult<String> {
+    if !qcore::valid_address(to) {
+        return Err(PyValueError::new_err("the recipient is not a Q1 address"));
+    }
     let signed = qcore::sign_transfer(&seed(seed_hex)?, index, to, amount, nonce, fee);
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
@@ -60,8 +63,19 @@ fn sign_call(
     meter_limit: u64,
     fee: u128,
 ) -> PyResult<String> {
+    if !qcore::valid_address(target) {
+        return Err(PyValueError::new_err("the target is not a Q1 address"));
+    }
     let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
-    let signed = qcore::sign_call(&seed(seed_hex)?, index, target, args, nonce, meter_limit, fee);
+    let signed = qcore::sign_call(
+        &seed(seed_hex)?,
+        index,
+        target,
+        args,
+        nonce,
+        meter_limit,
+        fee,
+    );
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
         ("tx_id", qcore::json::Json::str(signed.tx_id)),
