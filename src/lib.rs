@@ -8,6 +8,17 @@ fn seed(seed_hex: &str) -> PyResult<[u8; 32]> {
         .map_err(|_| PyValueError::new_err("a seed is 32 bytes of hex"))
 }
 
+fn canonical_address(address: &str) -> PyResult<String> {
+    let payload = qtv_idfmt::parse_address(address)
+        .map_err(|_| PyValueError::new_err("the address is not a Q1 address"))?;
+    let raw: [u8; 32] = payload.try_into().map_err(|_| {
+        PyValueError::new_err("the address payload is not the canonical thirty two bytes")
+    })?;
+    qtv_idfmt::render_address(&raw).map_err(|_| {
+        PyValueError::new_err("the address payload does not reach the canonical width")
+    })
+}
+
 #[pyfunction]
 fn address(seed_hex: &str, index: u64) -> PyResult<String> {
     Ok(qcore::account_address(&seed(seed_hex)?, index))
@@ -88,6 +99,45 @@ fn sign_call(
 }
 
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn sign_payable_call(
+    seed_hex: &str,
+    index: u64,
+    target: &str,
+    args_hex: &str,
+    nonce: u64,
+    meter_limit: u64,
+    fee: u128,
+    value: u64,
+    chain_id: u64,
+) -> PyResult<String> {
+    let target = canonical_address(target)?;
+    let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
+    let sender = qtv_account::derive(&seed(seed_hex)?, index);
+    let call = qtv_tx::Call::new(target, args);
+    let body = qtv_tx::Body::with_context(
+        sender.address(),
+        nonce,
+        meter_limit,
+        fee,
+        call,
+        value,
+        chain_id,
+    );
+    let wrapper = qtv_tx::sign(&sender, &body);
+    let tx_bytes = qtv_codec::to_bytes(&wrapper);
+    Ok(qcore::json::object(vec![
+        ("from", qcore::json::Json::str(sender.address())),
+        ("tx_id", qcore::json::Json::str(wrapper.id())),
+        (
+            "tx_hex",
+            qcore::json::Json::str(qcore::json::to_hex(&tx_bytes)),
+        ),
+    ])
+    .render())
+}
+
+#[pyfunction]
 fn sign_register(seed_hex: &str, index: u64, nonce: u64, fee: u128) -> PyResult<String> {
     let signed = qcore::sign_register(&seed(seed_hex)?, index, nonce, fee);
     Ok(qcore::json::object(vec![
@@ -130,6 +180,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(seed_from_mnemonic, m)?)?;
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;
     m.add_function(wrap_pyfunction!(sign_call, m)?)?;
+    m.add_function(wrap_pyfunction!(sign_payable_call, m)?)?;
     m.add_function(wrap_pyfunction!(sign_register, m)?)?;
     m.add_function(wrap_pyfunction!(submit_body, m)?)?;
     m.add_function(wrap_pyfunction!(account_body, m)?)?;
