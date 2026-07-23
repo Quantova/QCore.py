@@ -112,7 +112,6 @@ dependencies = [
  "qcore",
  "qtv-account",
  "qtv-codec",
- "qtv-idfmt",
  "qtv-tx",
 ]
 

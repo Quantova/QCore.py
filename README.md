@@ -18,7 +18,7 @@ Quantova is post quantum from the ground. There is no elliptic curve anywhere in
 
 3. The address. A Quantova address is the Bech32m Q1 string that renders the SHA3 256 hash of the scheme byte together with the whole module lattice public key of one thousand nine hundred fifty two bytes. The entire public key is bound into the address. Nothing is truncated to a twenty byte hash and there is no key recovery from a signature, so one address names exactly one post quantum key.
 
-4. The transaction. A transaction body carries the sender, the nonce, the meter limit, the fee, and the call. The bytes a signature stands over are the SHA3 256 hash of the canonical body followed by a fixed Quantova transaction domain tag, so a transaction signature can never be replayed as another kind of signed message. QCore.py assembles the body, signs the digest inside the native extension, and returns the wrapper bytes and the transaction id ready for the gateway.
+4. The transaction. A transaction body carries the sender, the nonce, the meter limit, the fee, and the call. A call may also carry a value in Quon and a chain id, so a signature can pay a call and can never be replayed onto another network. The bytes a signature stands over are the SHA3 256 hash of the canonical body followed by a fixed Quantova transaction domain tag, so a transaction signature can never be replayed as another kind of signed message. Every address the body carries is bound in as the raw thirty two byte payload underneath the Q1 string, never as the string itself, so two spellings of the same address always sign to the same bytes. QCore.py assembles the body, signs the digest inside the native extension, and returns the wrapper bytes and the transaction id ready for the gateway.
 
 ## How it is customised to Quantova and inherits nothing from the industry
 
@@ -54,6 +54,23 @@ client.register(seed, 0, info["fee"]["transfer_quon"])
 
 signed, outcome = client.transfer(seed, 0, to, 1000, info["fee"]["transfer_quon"])
 status = client.transaction(signed["tx_id"])
+```
+
+## Sending a payable call
+
+A call to a contract can carry a value in Quon alongside its arguments, and every payable call must name the chain it signs for so the signature can never be replayed onto another network. This is the one raw signer that asks for the chain id itself, so read it from the node you mean to reach rather than assuming one.
+
+```python
+import qcore
+
+seed = "0b" * 32
+target = qcore.address(seed, 1)
+
+# The nonce and the fee come from the account and the node the same way they do
+# for sign_call, and the last two arguments are the value the call carries in
+# Quon and the chain id the signature is bound to.
+signed = qcore.sign_payable_call(seed, 0, target, "", nonce=3, meter_limit=21000,
+                                  fee=1000000, value=2500000, chain_id=0x5154_4F56_5445_5354)
 ```
 
 ## Building

@@ -8,17 +8,6 @@ fn seed(seed_hex: &str) -> PyResult<[u8; 32]> {
         .map_err(|_| PyValueError::new_err("a seed is 32 bytes of hex"))
 }
 
-fn canonical_address(address: &str) -> PyResult<String> {
-    let payload = qtv_idfmt::parse_address(address)
-        .map_err(|_| PyValueError::new_err("the address is not a Q1 address"))?;
-    let raw: [u8; 32] = payload.try_into().map_err(|_| {
-        PyValueError::new_err("the address payload is not the canonical thirty two bytes")
-    })?;
-    qtv_idfmt::render_address(&raw).map_err(|_| {
-        PyValueError::new_err("the address payload does not reach the canonical width")
-    })
-}
-
 #[pyfunction]
 fn address(seed_hex: &str, index: u64) -> PyResult<String> {
     Ok(qcore::account_address(&seed(seed_hex)?, index))
@@ -111,10 +100,12 @@ fn sign_payable_call(
     value: u64,
     chain_id: u64,
 ) -> PyResult<String> {
-    let target = canonical_address(target)?;
+    if !qcore::valid_address(target) {
+        return Err(PyValueError::new_err("the target is not a Q1 address"));
+    }
     let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
     let sender = qtv_account::derive(&seed(seed_hex)?, index);
-    let call = qtv_tx::Call::new(target, args);
+    let call = qtv_tx::Call::new(target.to_string(), args);
     let body = qtv_tx::Body::with_context(
         sender.address(),
         nonce,
@@ -152,6 +143,26 @@ fn sign_register(seed_hex: &str, index: u64, nonce: u64, fee: u128) -> PyResult<
 }
 
 #[pyfunction]
+fn chain_id_from_name(name: &str) -> u64 {
+    qtv_tx::chain_id_from_name(name)
+}
+
+#[pyfunction]
+fn local_chain_id() -> u64 {
+    qtv_tx::LOCAL_CHAIN_ID
+}
+
+#[pyfunction]
+fn testnet_chain_id() -> u64 {
+    qtv_tx::TESTNET_CHAIN_ID
+}
+
+#[pyfunction]
+fn mainnet_chain_id() -> u64 {
+    qtv_tx::MAINNET_CHAIN_ID
+}
+
+#[pyfunction]
 fn submit_body(tx_hex: &str) -> PyResult<String> {
     let bytes = qcore::json::from_hex(tx_hex).map_err(PyValueError::new_err)?;
     Ok(qcore::submit_body(&bytes))
@@ -182,6 +193,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign_call, m)?)?;
     m.add_function(wrap_pyfunction!(sign_payable_call, m)?)?;
     m.add_function(wrap_pyfunction!(sign_register, m)?)?;
+    m.add_function(wrap_pyfunction!(chain_id_from_name, m)?)?;
+    m.add_function(wrap_pyfunction!(local_chain_id, m)?)?;
+    m.add_function(wrap_pyfunction!(testnet_chain_id, m)?)?;
+    m.add_function(wrap_pyfunction!(mainnet_chain_id, m)?)?;
     m.add_function(wrap_pyfunction!(submit_body, m)?)?;
     m.add_function(wrap_pyfunction!(account_body, m)?)?;
     m.add_function(wrap_pyfunction!(transaction_body, m)?)?;
