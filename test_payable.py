@@ -20,9 +20,9 @@ def ok(label, cond):
         print("  FAIL " + label)
 
 
-LOCAL_CHAIN_ID = 0x5154_5644_4556_4E31
-MAINNET_CHAIN_ID = 0x5154_4F56_4D41_494E
-TESTNET_CHAIN_ID = 0x5154_4F56_5445_5354
+LOCAL_CHAIN_ID = qcore.local_chain_id()
+MAINNET_CHAIN_ID = qcore.mainnet_chain_id()
+TESTNET_CHAIN_ID = qcore.testnet_chain_id()
 
 
 def main():

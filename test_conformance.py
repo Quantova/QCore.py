@@ -51,14 +51,17 @@ class Reader:
 
 def parse_body(hexstr):
     r = Reader(hexstr)
-    sender = r.take(r.uint(8)).decode("ascii")
+    sender = r.take(r.uint(8)).hex()
     nonce = r.uint(8)
     meter = r.uint(8)
     fee = r.uint(16)
-    target = r.take(r.uint(8)).decode("ascii")
+    target = r.take(r.uint(8)).hex()
     args = r.take(r.uint(8)).hex()
+    value = r.uint(8)
+    chain_id = r.uint(8)
     return {"sender": sender, "nonce": nonce, "meter": meter, "fee": fee,
-            "target": target, "args": args, "length": r.at}
+            "target": target, "args": args, "value": value, "chain_id": chain_id,
+            "length": r.at}
 
 
 def address_vector():
@@ -67,6 +70,7 @@ def address_vector():
     derived = qcore.address(v["master_seed"], v["index"])
     check("address matches the vector as bech32",
           bech32_equal(derived, v["canonical"]) and qcore.valid_address(derived), True)
+    check("the rendered address is uppercase Q1", derived == derived.upper(), True)
 
 
 def transaction_vector():
@@ -84,17 +88,25 @@ def transaction_vector():
 
     want = parse_body(v["body_bytes"])
     got = parse_body(signed["tx_hex"])
-    check("serialized sender field", bech32_equal(got["sender"], want["sender"]), True)
+    check("the serialized sender field reproduces the vector", got["sender"] == want["sender"], True)
+    check("the serialized sender is the raw 32 byte payload not the string",
+          len(got["sender"]) == 64, True)
     check("serialized nonce field", got["nonce"] == want["nonce"], True)
     check("serialized meter field", got["meter"] == want["meter"], True)
     check("serialized fee field", got["fee"] == want["fee"], True)
-    check("serialized target field", bech32_equal(got["target"], want["target"]), True)
+    check("the serialized target field reproduces the vector", got["target"] == want["target"], True)
+    check("the serialized target is the raw 32 byte payload not the string",
+          len(got["target"]) == 64, True)
     check("serialized args field", got["args"] == want["args"], True)
+    check("serialized value field", got["value"] == want["value"], True)
+    check("serialized chain id field", got["chain_id"] == want["chain_id"], True)
+    check("an unset chain id defaults to the local chain", got["chain_id"] == qcore.local_chain_id(), True)
     check("body length matches the vector", got["length"] == want["length"], True)
 
     again = json.loads(qcore.sign_call(
         v["master_seed"], v["sender_index"], target, v["args"], v["nonce"], v["gas_limit"], v["fee"]))
     check("signing is deterministic", again["tx_hex"] == signed["tx_hex"], True)
+    check("the transaction id matches the vector", bech32_equal(signed["tx_id"], v["tx_id"]), True)
     check("the transaction id is a qtx identifier",
           bool(re.match(r"^qtx1[0-9a-z]+$", signed["tx_id"], re.IGNORECASE)), True)
 
