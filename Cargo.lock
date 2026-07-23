@@ -110,6 +110,10 @@ version = "0.1.0"
 dependencies = [
  "pyo3",
  "qcore",
+ "qtv-account",
+ "qtv-codec",
+ "qtv-idfmt",
+ "qtv-tx",
 ]
 
 [[package]]

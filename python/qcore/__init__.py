@@ -2,6 +2,7 @@
 
 import ipaddress
 import json
+import re
 import secrets
 import urllib.error
 import urllib.parse
@@ -27,6 +28,7 @@ def generate_seed():
 
 __all__ = [
     "Client",
+    "Network",
     "generate_seed",
     "address",
     "valid_address",
@@ -85,9 +87,72 @@ def _fee_ceiling(max_fee):
     return ceiling
 
 
+DENOMINATION = "Quon"
+DECIMALS = 6
+
+
+class Network:
+    def __init__(self, name, chain_id=None, rpc_url=None, explorer_url=None,
+                 denomination=DENOMINATION, decimals=DECIMALS, is_mainnet=False):
+        self.name = name
+        self.chain_id = chain_id
+        self.rpc_url = rpc_url
+        self.explorer_url = explorer_url
+        self.denomination = denomination
+        self.decimals = decimals
+        self.is_mainnet = is_mainnet is True
+
+    @classmethod
+    def testnet(cls):
+        return cls(name="testnet", chain_id="Q-test-net-1",
+                   rpc_url="https://rpc-testnet.quantova.org",
+                   explorer_url="https://qvmscan.io", is_mainnet=False)
+
+    @classmethod
+    def mainnet(cls):
+        return cls(name="mainnet", chain_id="Q-main-net-1", rpc_url=None,
+                   explorer_url="https://qvmscan.io", is_mainnet=True)
+
+    @classmethod
+    def for_url(cls, base):
+        return cls(name="custom", chain_id=None, rpc_url=base, is_mainnet=False)
+
+
+def _chain_id_looks_like_mainnet(chain_id):
+    if not chain_id:
+        return False
+    return re.search(r"test|dev|local", str(chain_id), re.IGNORECASE) is None
+
+
 class Client:
-    def __init__(self, base):
-        self.base = _require_safe_transport(str(base)).rstrip("/")
+    def __init__(self, target, acknowledge_mainnet=False, network=None):
+        self.acknowledge_mainnet = acknowledge_mainnet is True
+        if isinstance(target, Network):
+            self.network = target
+            base = target.rpc_url
+            if not base:
+                raise ValueError(
+                    f"the {target.name} network has no rpc endpoint yet, pass the endpoint "
+                    "explicitly with Client(url)"
+                )
+            if target.is_mainnet and not self.acknowledge_mainnet:
+                raise ValueError(
+                    "refusing to open a mainnet client without acknowledge_mainnet True, a "
+                    "mainnet transaction moves real value so the network must be chosen on purpose"
+                )
+        else:
+            base = str(target)
+            self.network = network if isinstance(network, Network) else Network.for_url(base)
+        self.base = _require_safe_transport(base).rstrip("/")
+
+    def _guard_mainnet(self, chain_id):
+        on_mainnet = (self.network is not None and self.network.is_mainnet) or _chain_id_looks_like_mainnet(chain_id)
+        if on_mainnet and not self.acknowledge_mainnet:
+            label = chain_id or (self.network.chain_id if self.network else "")
+            raise ValueError(
+                f"refusing to sign for the mainnet chain {label} without acknowledge_mainnet "
+                "True, pass it when you mean to move real value"
+            )
 
     def _call(self, method, body):
         req = urllib.request.Request(
@@ -133,6 +198,7 @@ class Client:
             raise ValueError("the recipient is not a Q1 address")
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
+        self._guard_mainnet(info.get("chain_id") if isinstance(info, dict) else None)
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
         if fee is None:
             raise RuntimeError("the gateway did not report a transfer fee")
@@ -152,6 +218,7 @@ class Client:
     def register(self, seed_hex, index, max_fee):
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
+        self._guard_mainnet(info.get("chain_id") if isinstance(info, dict) else None)
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
         if fee is None:
             raise RuntimeError("the gateway did not report a transfer fee")
@@ -173,6 +240,7 @@ class Client:
             raise ValueError("the target is not a Q1 address")
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
+        self._guard_mainnet(info.get("chain_id") if isinstance(info, dict) else None)
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
         if fee is None:
             raise RuntimeError("the gateway did not report a transfer fee")
