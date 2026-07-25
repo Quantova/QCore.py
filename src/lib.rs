@@ -30,6 +30,7 @@ fn seed_from_mnemonic(phrase: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 fn sign_transfer(
     seed_hex: &str,
     index: u64,
@@ -37,11 +38,12 @@ fn sign_transfer(
     amount: u64,
     nonce: u64,
     fee: u128,
+    chain_id: u64,
 ) -> PyResult<String> {
     if !qcore::valid_address(to) {
         return Err(PyValueError::new_err("the recipient is not a Q1 address"));
     }
-    let signed = qcore::sign_transfer(&seed(seed_hex)?, index, to, amount, nonce, fee);
+    let signed = qcore::sign_transfer(&seed(seed_hex)?, index, to, amount, nonce, fee, chain_id);
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
         ("tx_id", qcore::json::Json::str(signed.tx_id)),
@@ -54,6 +56,7 @@ fn sign_transfer(
 }
 
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 fn sign_call(
     seed_hex: &str,
     index: u64,
@@ -62,6 +65,7 @@ fn sign_call(
     nonce: u64,
     meter_limit: u64,
     fee: u128,
+    chain_id: u64,
 ) -> PyResult<String> {
     if !qcore::valid_address(target) {
         return Err(PyValueError::new_err("the target is not a Q1 address"));
@@ -75,6 +79,7 @@ fn sign_call(
         nonce,
         meter_limit,
         fee,
+        chain_id,
     );
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
@@ -129,8 +134,14 @@ fn sign_payable_call(
 }
 
 #[pyfunction]
-fn sign_register(seed_hex: &str, index: u64, nonce: u64, fee: u128) -> PyResult<String> {
-    let signed = qcore::sign_register(&seed(seed_hex)?, index, nonce, fee);
+fn sign_register(
+    seed_hex: &str,
+    index: u64,
+    nonce: u64,
+    fee: u128,
+    chain_id: u64,
+) -> PyResult<String> {
+    let signed = qcore::sign_register(&seed(seed_hex)?, index, nonce, fee, chain_id);
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
         ("tx_id", qcore::json::Json::str(signed.tx_id)),
