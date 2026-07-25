@@ -2,7 +2,6 @@
 
 import ipaddress
 import json
-import re
 import secrets
 import urllib.error
 import urllib.parse
@@ -87,7 +86,24 @@ def _require_safe_transport(base):
     return base
 
 
+def _check_amount(amount):
+    # Match the JavaScript checkAmount. A Python int is already arbitrary precision, so it and a
+    # decimal string are the only accepted forms. A float would truncate silently through int()
+    # and sign a wrong amount, and a bool or anything else is not a whole number, so all are
+    # refused before anything is signed.
+    if isinstance(amount, bool) or not isinstance(amount, (int, str)):
+        raise ValueError(
+            "the amount must be a whole number int or a decimal string, never a float"
+        )
+
+
 def _fee_ceiling(max_fee):
+    # The same rule as the amount. A float ceiling would truncate through int() and could set the
+    # ceiling higher than intended, so reject it and any non integer non string before the check.
+    if isinstance(max_fee, bool) or not isinstance(max_fee, (int, str)):
+        raise ValueError(
+            "the maximum fee must be a whole number int or a decimal string, never a float"
+        )
     try:
         ceiling = int(max_fee)
     except (TypeError, ValueError):
@@ -128,10 +144,14 @@ class Network:
         return cls(name="custom", chain_id=None, rpc_url=base, is_mainnet=False)
 
 
-def _chain_id_looks_like_mainnet(chain_id):
-    if not chain_id:
-        return False
-    return re.search(r"test|dev|local", str(chain_id), re.IGNORECASE) is None
+def _signing_chain_id(info):
+    # Bind the signature to the network the gateway says it serves, computed from the reported
+    # name with the same hash the node uses, so the transaction is valid only on that network and
+    # a rename is followed without a code change.
+    name = info.get("chain_id") if isinstance(info, dict) else None
+    if not name:
+        raise RuntimeError("the gateway did not report a chain id to bind the signature to")
+    return chain_id_from_name(name)
 
 
 class Client:
@@ -155,13 +175,16 @@ class Client:
             self.network = network if isinstance(network, Network) else Network.for_url(base)
         self.base = _require_safe_transport(base).rstrip("/")
 
-    def _guard_mainnet(self, chain_id):
-        on_mainnet = (self.network is not None and self.network.is_mainnet) or _chain_id_looks_like_mainnet(chain_id)
+    def _guard_mainnet(self):
+        # The mainnet decision comes from the network this Client was configured with, never from
+        # the gateway's self reported chain id, so a hostile gateway cannot suppress the prompt by
+        # claiming to be a testnet.
+        on_mainnet = self.network is not None and self.network.is_mainnet
         if on_mainnet and not self.acknowledge_mainnet:
-            label = chain_id or (self.network.chain_id if self.network else "")
+            label = self.network.chain_id if self.network else ""
             raise ValueError(
-                f"refusing to sign for the mainnet chain {label} without acknowledge_mainnet "
-                "True, pass it when you mean to move real value"
+                f"refusing to sign for the mainnet network {label or ''} without "
+                "acknowledge_mainnet True, pass it when you mean to move real value"
             )
 
     def _call(self, method, body):
@@ -206,9 +229,11 @@ class Client:
     def transfer(self, seed_hex, index, to, amount, max_fee):
         if not valid_address(to):
             raise ValueError("the recipient is not a Q1 address")
+        _check_amount(amount)
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
-        self._guard_mainnet(info.get("chain_id") if isinstance(info, dict) else None)
+        self._guard_mainnet()
+        chain_id = _signing_chain_id(info)
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
         if fee is None:
             raise RuntimeError("the gateway did not report a transfer fee")
@@ -221,14 +246,15 @@ class Client:
         nonce = acct.get("nonce") if isinstance(acct, dict) else None
         if nonce is None:
             raise RuntimeError("the gateway did not report a nonce")
-        signed = _loads(sign_transfer(seed_hex, index, to, int(amount), int(nonce), int(fee)))
+        signed = _loads(sign_transfer(seed_hex, index, to, int(amount), int(nonce), int(fee), chain_id))
         outcome = self.submit(signed["tx_hex"])
         return signed, outcome
 
     def register(self, seed_hex, index, max_fee):
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
-        self._guard_mainnet(info.get("chain_id") if isinstance(info, dict) else None)
+        self._guard_mainnet()
+        chain_id = _signing_chain_id(info)
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
         if fee is None:
             raise RuntimeError("the gateway did not report a transfer fee")
@@ -241,7 +267,7 @@ class Client:
         nonce = acct.get("nonce") if isinstance(acct, dict) else None
         if nonce is None:
             raise RuntimeError("the gateway did not report a nonce")
-        signed = _loads(sign_register(seed_hex, index, int(nonce), int(fee)))
+        signed = _loads(sign_register(seed_hex, index, int(nonce), int(fee), chain_id))
         outcome = self.submit(signed["tx_hex"])
         return signed, outcome
 
@@ -250,7 +276,8 @@ class Client:
             raise ValueError("the target is not a Q1 address")
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
-        self._guard_mainnet(info.get("chain_id") if isinstance(info, dict) else None)
+        self._guard_mainnet()
+        chain_id = _signing_chain_id(info)
         fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
         if fee is None:
             raise RuntimeError("the gateway did not report a transfer fee")
@@ -263,6 +290,6 @@ class Client:
         nonce = acct.get("nonce") if isinstance(acct, dict) else None
         if nonce is None:
             raise RuntimeError("the gateway did not report a nonce")
-        signed = _loads(sign_call(seed_hex, index, target, args_hex, int(nonce), int(meter_limit), int(fee)))
+        signed = _loads(sign_call(seed_hex, index, target, args_hex, int(nonce), int(meter_limit), int(fee), chain_id))
         outcome = self.submit(signed["tx_hex"])
         return signed, outcome
