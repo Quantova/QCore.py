@@ -7,7 +7,7 @@
 # INCLUDING transitive and dev-dependencies. No workarounds, no test-only exceptions, no feature flags.
 #
 # This binding links pyo3 from the registry, so unlike the pure stack crates it carries a small
-# third party tree. The allowed licenses and the one skip below cover exactly that tree.
+# third party tree. The allowed licenses below cover exactly that tree.
 
 [graph]
 all-features = true
@@ -15,12 +15,6 @@ all-features = true
 [bans]
 multiple-versions = "deny"
 wildcards = "allow"
-# qtv-crypto is pulled by commit here and by the same commit v0.3.0 tag through the
-# Quantova-Chain crates this binding builds on, so it appears under two source specs that
-# resolve to one commit. One crypto core, two spellings.
-skip = [
-    { crate = "qtv-crypto" },
-]
 deny = [
     "k256",
     "ed25519-dalek",
