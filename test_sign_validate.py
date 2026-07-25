@@ -12,21 +12,23 @@ def main():
     seed = "11" * 32
     good = qcore.address(seed, 0)
 
-    signed = qcore.sign_transfer(seed, 0, good, 5, 0, 1)
+    chain = qcore.local_chain_id()
+
+    signed = qcore.sign_transfer(seed, 0, good, 5, 0, 1, chain)
     assert "tx_hex" in signed, "a valid recipient must sign"
 
-    signed = qcore.sign_call(seed, 0, good, "", 0, 1000, 1)
+    signed = qcore.sign_call(seed, 0, good, "", 0, 1000, 1, chain)
     assert "tx_hex" in signed, "a valid target must sign"
 
     for bad in ("not an address", "", "Q1zzzz", good[:-1] + ("q" if good[-1] != "q" else "p")):
         try:
-            qcore.sign_transfer(seed, 0, bad, 5, 0, 1)
+            qcore.sign_transfer(seed, 0, bad, 5, 0, 1, chain)
         except ValueError:
             pass
         else:
             raise AssertionError(f"sign_transfer signed a bad recipient {bad!r}")
         try:
-            qcore.sign_call(seed, 0, bad, "", 0, 1000, 1)
+            qcore.sign_call(seed, 0, bad, "", 0, 1000, 1, chain)
         except ValueError:
             pass
         else:
