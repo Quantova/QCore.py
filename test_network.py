@@ -54,12 +54,14 @@ def main():
     ok("mainnet client opens with acknowledgement", acked is not None)
 
     over_url = Client("https://rpc-testnet.quantova.org")
-    throws("a mainnet chain id is refused when not acknowledged",
-           lambda: over_url._guard_mainnet("Q-main-net-1"))
-    ok("a testnet chain id passes the guard", over_url._guard_mainnet("Q-test-net-1") is None)
-    over_url_acked = Client("https://rpc.quantova.org", acknowledge_mainnet=True)
-    ok("an acknowledged client passes the guard",
-       over_url_acked._guard_mainnet("Q-main-net-1") is None)
+    ok("a plain url client is not forced to acknowledge mainnet by any gateway string",
+       over_url._guard_mainnet() is None)
+    hostile_mainnet = Client("https://rpc.quantova.org", network=Network.mainnet())
+    throws("a configured mainnet network is refused when not acknowledged, whatever the gateway reports",
+           lambda: hostile_mainnet._guard_mainnet())
+    over_url_acked = Client("https://rpc.quantova.org", acknowledge_mainnet=True, network=Network.mainnet())
+    ok("an acknowledged mainnet client passes the guard",
+       over_url_acked._guard_mainnet() is None)
 
     if failures > 0:
         print("\nnetwork: " + str(failures) + " checks failed")
