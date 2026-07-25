@@ -91,6 +91,31 @@ def main():
     if state["submitted"] != 2:
         fail("a bad ceiling must fail before submitting")
 
+    # A float amount or a float ceiling is refused before any network call, the same way the
+    # JavaScript binding refuses a JavaScript number, because int() would truncate it silently.
+    for bad_amount in (1.5, 1000.0, True):
+        threw = False
+        try:
+            client.transfer(seed, 0, to, bad_amount, 1000)
+        except ValueError as err:
+            threw = True
+            if "amount" not in str(err):
+                fail("unclear amount error: " + str(err))
+        if not threw:
+            fail("a float amount must be refused: " + repr(bad_amount))
+    for bad_fee in (1.5, 1000.0, True):
+        threw = False
+        try:
+            client.transfer(seed, 0, to, 1000, bad_fee)
+        except ValueError as err:
+            threw = True
+            if "maximum fee" not in str(err):
+                fail("unclear ceiling error: " + str(err))
+        if not threw:
+            fail("a float ceiling must be refused: " + repr(bad_fee))
+    if state["submitted"] != 2:
+        fail("a rejected float must fail before submitting")
+
     server.shutdown()
     print("fee ceiling: all cases passed")
 
