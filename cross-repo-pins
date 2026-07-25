@@ -1,2 +1,7 @@
-# Cross repo pins. One git dependency per line: repository then tag.
-Q-Crypto v0.3.0
+# Cross repo pins. One git dependency per line, the repository then the exact commit it resolves to.
+# qtv-crypto is the signing edge, so it is anchored to an immutable commit, the same rev QCore.rs
+# pins, rather than the movable v0.3.0 tag. The shared Quantova-Chain crates qtv-account and qtv-tx
+# and the QVM still carry the v0.3.0 tag, which the SDK lockfiles resolve to this same commit.
+# Repinning those shared crates to the rev is a chain wide founder decision, because it changes the
+# crypto commit the whole Quantova-Chain builds against, so it is left for the founder to make.
+Q-Crypto 98860273eb291c211fa2dc24f9b63f18936f562c
