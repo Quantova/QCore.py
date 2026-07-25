@@ -29,7 +29,7 @@ def main():
     seed = "0b" * 32
     target = qcore.address(seed, 1)
 
-    plain = json.loads(qcore.sign_call(seed, 0, target, "", 3, 21000, 500))
+    plain = json.loads(qcore.sign_call(seed, 0, target, "", 3, 21000, 500, LOCAL_CHAIN_ID))
     payable = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, LOCAL_CHAIN_ID))
     ok("a payable call with no value on the local chain matches a plain call",
        payable["tx_hex"] == plain["tx_hex"])
