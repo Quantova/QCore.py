@@ -67,7 +67,7 @@ def main():
         fail("the submitted transaction must be the signed registration bytes")
     if state["asked_account"] != sender:
         fail("register must read the nonce of the account it registers")
-    transfer_signed = json.loads(qcore.sign_transfer(seed, 0, sender, 1000, 0, 100))
+    transfer_signed = json.loads(qcore.sign_transfer(seed, 0, sender, 1000, 0, 100, qcore.local_chain_id()))
     if signed["tx_hex"] == transfer_signed["tx_hex"]:
         fail("a registration must not be identical to a transfer")
 
