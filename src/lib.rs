@@ -1,3 +1,6 @@
+// Copyright 2026 Quantova Inc
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 

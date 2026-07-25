@@ -1,3 +1,6 @@
+# Copyright 2026 Quantova Inc
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
 import sys, time, qcore
 
 url = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8645"
