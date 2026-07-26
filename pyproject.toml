@@ -12,7 +12,22 @@ description = "The Quantova post quantum client core for Python, generated over 
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "Apache-2.0 OR MIT" }
+authors = [{ name = "Quantova Inc" }]
 keywords = ["post-quantum", "quantum-resistant", "blockchain", "wallet", "cryptography", "ml-dsa", "quantova", "pyo3"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Security :: Cryptography",
+]
+
+[project.urls]
+Homepage = "https://github.com/Quantova/QCore.py"
+Repository = "https://github.com/Quantova/QCore.py"
+Issues = "https://github.com/Quantova/QCore.py/issues"
 
 [tool.maturin]
 python-source = "python"
