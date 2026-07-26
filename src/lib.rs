@@ -46,7 +46,8 @@ fn sign_transfer(
     if !qcore::valid_address(to) {
         return Err(PyValueError::new_err("the recipient is not a Q1 address"));
     }
-    let signed = qcore::sign_transfer(&seed(seed_hex)?, index, to, amount, nonce, fee, chain_id);
+    let signed = qcore::sign_transfer(&seed(seed_hex)?, index, to, amount, nonce, fee, chain_id)
+        .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
         ("tx_id", qcore::json::Json::str(signed.tx_id)),
@@ -83,7 +84,8 @@ fn sign_call(
         meter_limit,
         fee,
         chain_id,
-    );
+    )
+    .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
         ("tx_id", qcore::json::Json::str(signed.tx_id)),
@@ -144,7 +146,8 @@ fn sign_register(
     fee: u128,
     chain_id: u64,
 ) -> PyResult<String> {
-    let signed = qcore::sign_register(&seed(seed_hex)?, index, nonce, fee, chain_id);
+    let signed = qcore::sign_register(&seed(seed_hex)?, index, nonce, fee, chain_id)
+        .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
         ("tx_id", qcore::json::Json::str(signed.tx_id)),
