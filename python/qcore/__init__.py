@@ -89,6 +89,15 @@ def _require_safe_transport(base):
     return base
 
 
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _require_safe_transport(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_SafeRedirectHandler())
+
+
 def _check_amount(amount):
     # Match the JavaScript checkAmount. A Python int is already arbitrary precision, so it and a
     # decimal string are the only accepted forms. A float would truncate silently through int()
@@ -198,7 +207,7 @@ class Client:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=20) as res:
+            with _OPENER.open(req, timeout=20) as res:
                 raw = res.read(_MAX_RESPONSE + 1)
                 if len(raw) > _MAX_RESPONSE:
                     raise RuntimeError("the response is too large")

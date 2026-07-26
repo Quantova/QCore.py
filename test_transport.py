@@ -3,12 +3,39 @@
 
 import os
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 try:
     import qcore
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
     import qcore
+
+
+def redirect_to_plaintext_is_refused():
+    class Redirector(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            self.send_response(302)
+            self.send_header("Location", "http://203.0.113.7/v1/node_info")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    server = HTTPServer(("127.0.0.1", 0), Redirector)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        client = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
+        client.node_info()
+    except ValueError:
+        return True
+    except Exception:
+        return False
+    finally:
+        server.shutdown()
+    return False
 
 
 def rejects(base):
@@ -38,6 +65,8 @@ def main():
     assert rejects("http://gateway.quantova.example"), "plaintext http to a public host must be refused"
     assert rejects("ftp://127.0.0.1:21"), "a non http scheme must be refused"
     assert rejects("127.0.0.1:8080"), "a base with no scheme must be refused"
+
+    assert redirect_to_plaintext_is_refused(), "a redirect to a plaintext non loopback host must be refused"
 
     print("transport guard: all cases passed")
 
