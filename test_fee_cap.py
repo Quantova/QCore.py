@@ -13,7 +13,7 @@ except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
     import qcore
 
-state = {"fee": "100", "submitted": 0}
+state = {"fee": "100", "submitted": 0, "fee_bad": False}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -33,8 +33,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
 
         if self.path == "/v1/node_info":
+            fee_field = "not a dict" if state["fee_bad"] else {"transfer_quon": state["fee"], "quon_per_qtov": "1000000"}
             send({"chain_id": "Q-test-net-1", "head_height": 10, "denomination": "Quon",
-                  "fee": {"transfer_quon": state["fee"], "quon_per_qtov": "1000000"}, "version": "test"})
+                  "fee": fee_field, "version": "test"})
         elif self.path == "/v1/get_account":
             send({"address": body["address"], "nonce": 0, "balance": "0", "scheme": 1, "has_key": True})
         elif self.path == "/v1/submit_transaction":
@@ -118,6 +119,33 @@ def main():
             fail("a float ceiling must be refused: " + repr(bad_fee))
     if state["submitted"] != 2:
         fail("a rejected float must fail before submitting")
+
+    for bad_amount in ("abc", -1, "-5"):
+        threw = False
+        try:
+            client.transfer(seed, 0, to, bad_amount, 1000)
+        except ValueError as err:
+            threw = True
+            if "amount" not in str(err):
+                fail("unclear amount error: " + str(err))
+        if not threw:
+            fail("a bad amount must be refused: " + repr(bad_amount))
+    if state["submitted"] != 2:
+        fail("a rejected amount must fail before submitting")
+
+    state["fee_bad"] = True
+    bad_fee_shape = False
+    try:
+        client.transfer(seed, 0, to, 1000, 1000)
+    except RuntimeError as err:
+        bad_fee_shape = True
+        if "transfer fee" not in str(err):
+            fail("unclear fee shape error: " + str(err))
+    if not bad_fee_shape:
+        fail("a non dict fee must be refused with a clean error")
+    if state["submitted"] != 2:
+        fail("a malformed fee must fail before submitting")
+    state["fee_bad"] = False
 
     server.shutdown()
     print("fee ceiling: all cases passed")

@@ -107,6 +107,12 @@ def _check_amount(amount):
         raise ValueError(
             "the amount must be a whole number int or a decimal string, never a float"
         )
+    try:
+        value = int(amount)
+    except (TypeError, ValueError):
+        raise ValueError("the amount must be an integer number of Quon")
+    if value < 0:
+        raise ValueError("the amount cannot be negative")
 
 
 def _fee_ceiling(max_fee):
@@ -164,6 +170,16 @@ def _signing_chain_id(info):
     if not name:
         raise RuntimeError("the gateway did not report a chain id to bind the signature to")
     return chain_id_from_name(name)
+
+
+def _transfer_fee(info):
+    fee_obj = info.get("fee") if isinstance(info, dict) else None
+    if not isinstance(fee_obj, dict):
+        raise RuntimeError("the gateway did not report a transfer fee")
+    fee = fee_obj.get("transfer_quon")
+    if fee is None:
+        raise RuntimeError("the gateway did not report a transfer fee")
+    return fee
 
 
 class Client:
@@ -246,9 +262,7 @@ class Client:
         info = self.node_info()
         self._guard_mainnet()
         chain_id = _signing_chain_id(info)
-        fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
-        if fee is None:
-            raise RuntimeError("the gateway did not report a transfer fee")
+        fee = _transfer_fee(info)
         if int(fee) > ceiling:
             raise ValueError(
                 f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
@@ -267,9 +281,7 @@ class Client:
         info = self.node_info()
         self._guard_mainnet()
         chain_id = _signing_chain_id(info)
-        fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
-        if fee is None:
-            raise RuntimeError("the gateway did not report a transfer fee")
+        fee = _transfer_fee(info)
         if int(fee) > ceiling:
             raise ValueError(
                 f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
@@ -290,9 +302,7 @@ class Client:
         info = self.node_info()
         self._guard_mainnet()
         chain_id = _signing_chain_id(info)
-        fee = info.get("fee", {}).get("transfer_quon") if isinstance(info, dict) else None
-        if fee is None:
-            raise RuntimeError("the gateway did not report a transfer fee")
+        fee = _transfer_fee(info)
         if int(fee) > ceiling:
             raise ValueError(
                 f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
