@@ -6,7 +6,7 @@ requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "qcore"
+name = "quantova-qcore"
 version = "0.1.0"
 description = "The Quantova post quantum client core for Python, generated over the Rust core QCore.rs, with quantum safe ML-DSA-65 signing and the Quantova gateway wire"
 readme = "README.md"
