@@ -86,7 +86,7 @@ def transaction_vector():
     check("target derives to the vector target", bech32_equal(target, v["target"]), True)
 
     signed = json.loads(qcore.sign_call(
-        v["master_seed"], v["sender_index"], target, v["args"], v["nonce"], v["gas_limit"], v["fee"],
+        v["master_seed"], v["sender_index"], target, v["args"], v["nonce"], v["meter_limit"], v["fee"],
         qcore.local_chain_id()))
     check("the signer address is the vector sender", bech32_equal(signed["from"], v["sender"]), True)
 
@@ -108,7 +108,7 @@ def transaction_vector():
     check("body length matches the vector", got["length"] == want["length"], True)
 
     again = json.loads(qcore.sign_call(
-        v["master_seed"], v["sender_index"], target, v["args"], v["nonce"], v["gas_limit"], v["fee"],
+        v["master_seed"], v["sender_index"], target, v["args"], v["nonce"], v["meter_limit"], v["fee"],
         qcore.local_chain_id()))
     check("signing is deterministic", again["tx_hex"] == signed["tx_hex"], True)
     check("the transaction id matches the vector", bech32_equal(signed["tx_id"], v["tx_id"]), True)

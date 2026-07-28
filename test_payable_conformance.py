@@ -99,7 +99,7 @@ def payable_vector():
 
     signed = json.loads(qcore.sign_payable_call(
         v["master_seed"], v["sender_index"], target, v["args"],
-        v["nonce"], v["gas_limit"], v["fee"], v["value"], int(v["chain_id"])))
+        v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"])))
     check("the signer address is the vector sender", bech32_equal(signed["from"], v["sender"]), True)
     check("the from field renders uppercase Q1", signed["from"].startswith("Q1"), True)
     check("the signed bytes match the frozen QCore.js tx hex byte for byte",
@@ -118,12 +118,12 @@ def payable_vector():
 
     again = json.loads(qcore.sign_payable_call(
         v["master_seed"], v["sender_index"], target, v["args"],
-        v["nonce"], v["gas_limit"], v["fee"], v["value"], int(v["chain_id"])))
+        v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"])))
     check("signing is deterministic", again["tx_hex"] == signed["tx_hex"], True)
 
     lower = json.loads(qcore.sign_payable_call(
         v["master_seed"], v["sender_index"], target.lower(), v["args"],
-        v["nonce"], v["gas_limit"], v["fee"], v["value"], int(v["chain_id"])))
+        v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"])))
     check("a lowercase target signs the same bytes", lower["tx_hex"] == signed["tx_hex"], True)
 
 
