@@ -162,16 +162,6 @@ class Network:
         return cls(name="custom", chain_id=None, rpc_url=base, is_mainnet=False)
 
 
-def _signing_chain_id(info):
-    # Bind the signature to the network the gateway says it serves, computed from the reported
-    # name with the same hash the node uses, so the transaction is valid only on that network and
-    # a rename is followed without a code change.
-    name = info.get("chain_id") if isinstance(info, dict) else None
-    if not name:
-        raise RuntimeError("the gateway did not report a chain id to bind the signature to")
-    return chain_id_from_name(name)
-
-
 def _transfer_fee(info):
     fee_obj = info.get("fee") if isinstance(info, dict) else None
     if not isinstance(fee_obj, dict):
@@ -214,6 +204,23 @@ class Client:
                 f"refusing to sign for the mainnet network {label or ''} without "
                 "acknowledge_mainnet True, pass it when you mean to move real value"
             )
+
+    def _signing_chain_id(self, info):
+        # Bind the signature to the network the gateway says it serves, computed from the reported
+        # name with the same hash the node uses, so the transaction is valid only on that network
+        # and a rename is followed without a code change. When this Client was configured with a
+        # known chain id, the reported name must match it, so a hostile gateway cannot bind a
+        # signature to a network the caller did not choose and then replay it there.
+        name = info.get("chain_id") if isinstance(info, dict) else None
+        if not name:
+            raise RuntimeError("the gateway did not report a chain id to bind the signature to")
+        configured = self.network.chain_id if self.network else None
+        if configured and name != configured:
+            raise RuntimeError(
+                f"the gateway reports chain {name} but this client is configured for {configured}; "
+                "refusing to sign a transaction that would be valid on a network you did not choose"
+            )
+        return chain_id_from_name(name)
 
     def _call(self, method, body):
         req = urllib.request.Request(
@@ -261,7 +268,7 @@ class Client:
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
         self._guard_mainnet()
-        chain_id = _signing_chain_id(info)
+        chain_id = self._signing_chain_id(info)
         fee = _transfer_fee(info)
         if int(fee) > ceiling:
             raise ValueError(
@@ -280,7 +287,7 @@ class Client:
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
         self._guard_mainnet()
-        chain_id = _signing_chain_id(info)
+        chain_id = self._signing_chain_id(info)
         fee = _transfer_fee(info)
         if int(fee) > ceiling:
             raise ValueError(
@@ -301,7 +308,7 @@ class Client:
         ceiling = _fee_ceiling(max_fee)
         info = self.node_info()
         self._guard_mainnet()
-        chain_id = _signing_chain_id(info)
+        chain_id = self._signing_chain_id(info)
         fee = _transfer_fee(info)
         if int(fee) > ceiling:
             raise ValueError(
