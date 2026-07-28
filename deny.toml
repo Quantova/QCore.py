@@ -1,12 +1,6 @@
 # Copyright 2026 Quantova Inc
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 
-#
-#
-#
-# This binding links pyo3 from the registry, so unlike the pure stack crates it carries a small
-# third party tree. The allowed licenses below cover exactly that tree.
-
 [graph]
 all-features = true
 
