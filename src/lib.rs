@@ -3,17 +3,23 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use zeroize::{Zeroize, Zeroizing};
 
-fn seed(seed_hex: &str) -> PyResult<[u8; 32]> {
-    let bytes = qcore::json::from_hex(seed_hex).map_err(PyValueError::new_err)?;
-    bytes
-        .try_into()
-        .map_err(|_| PyValueError::new_err("a seed is 32 bytes of hex"))
+fn seed(seed_hex: &str) -> PyResult<Zeroizing<[u8; 32]>> {
+    let mut bytes = qcore::json::from_hex(seed_hex).map_err(PyValueError::new_err)?;
+    if bytes.len() != 32 {
+        bytes.zeroize();
+        return Err(PyValueError::new_err("a seed is 32 bytes of hex"));
+    }
+    let mut seed = Zeroizing::new([0u8; 32]);
+    seed.copy_from_slice(&bytes);
+    bytes.zeroize();
+    Ok(seed)
 }
 
 #[pyfunction]
 fn address(seed_hex: &str, index: u64) -> PyResult<String> {
-    Ok(qcore::account_address(&seed(seed_hex)?, index))
+    Ok(qcore::account_address(&*seed(seed_hex)?, index))
 }
 
 #[pyfunction]
@@ -23,7 +29,7 @@ fn valid_address(address: &str) -> bool {
 
 #[pyfunction]
 fn mnemonic_from_seed(seed_hex: &str) -> PyResult<String> {
-    Ok(qcore::mnemonic_from_seed(&seed(seed_hex)?))
+    Ok(qcore::mnemonic_from_seed(&*seed(seed_hex)?))
 }
 
 #[pyfunction]
@@ -46,7 +52,7 @@ fn sign_transfer(
     if !qcore::valid_address(to) {
         return Err(PyValueError::new_err("the recipient is not a Q1 address"));
     }
-    let signed = qcore::sign_transfer(&seed(seed_hex)?, index, to, amount, nonce, fee, chain_id)
+    let signed = qcore::sign_transfer(&*seed(seed_hex)?, index, to, amount, nonce, fee, chain_id)
         .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
@@ -76,7 +82,7 @@ fn sign_call(
     }
     let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
     let signed = qcore::sign_call(
-        &seed(seed_hex)?,
+        &*seed(seed_hex)?,
         index,
         target,
         args,
@@ -114,7 +120,7 @@ fn sign_payable_call(
         return Err(PyValueError::new_err("the target is not a Q1 address"));
     }
     let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
-    let sender = qtv_account::derive(&seed(seed_hex)?, index);
+    let sender = qtv_account::derive(&*seed(seed_hex)?, index);
     let call = qtv_tx::Call::new(target.to_string(), args);
     let body = qtv_tx::Body::with_context(
         sender.address(),
@@ -146,7 +152,7 @@ fn sign_register(
     fee: u128,
     chain_id: u64,
 ) -> PyResult<String> {
-    let signed = qcore::sign_register(&seed(seed_hex)?, index, nonce, fee, chain_id)
+    let signed = qcore::sign_register(&*seed(seed_hex)?, index, nonce, fee, chain_id)
         .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),

@@ -114,6 +114,7 @@ dependencies = [
  "qtv-account",
  "qtv-codec",
  "qtv-tx",
+ "zeroize",
 ]
 
 [[package]]
