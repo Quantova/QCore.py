@@ -35,7 +35,7 @@ fn mnemonic_from_seed(seed_hex: &str) -> PyResult<String> {
 #[pyfunction]
 fn seed_from_mnemonic(phrase: &str) -> PyResult<String> {
     let seed = qcore::seed_from_mnemonic(phrase).map_err(PyValueError::new_err)?;
-    Ok(qcore::json::to_hex(&seed))
+    Ok(qcore::json::to_hex(&seed[..]))
 }
 
 #[pyfunction]
