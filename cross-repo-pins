@@ -1,4 +1,11 @@
-# Cross repo pins. One git dependency per line, the repository then the exact commit it resolves to.
-# qtv-crypto is the signing edge, so it is anchored to an immutable commit, the same rev QCore.rs
-# pins, rather than the movable v0.3.0 tag. The shared Quantova-Chain crates qtv-account and qtv-tx
-# and the QVM now pin this same rev as well, so the whole tree resolves qtv-crypto to one commit.
+# Cross repo pins. One dependency per line, the repository then the exact commit
+# a published build resolves to. qtv-crypto is the signing edge and is a git
+# dependency anchored to an immutable commit, the same rev QCore.rs pins, rather
+# than the movable v0.3.0 tag. The qtv-account, qtv-tx, qtv-codec and qtv-idfmt
+# crates enter through path dependencies on Quantova-Chain, and qtv-vm through
+# Quantova-Chain onto QVM, so their source commits are recorded here to keep a
+# published build reproducible.
+
+Q-Crypto        33c7e9395ad23f07019909470d319211213e904f
+Quantova-Chain  547c69042c969fa0974d7101fbd028bcdcededa4
+QVM             13c045217eb23f4d3016e6c0c80e567a53ccbfb6
