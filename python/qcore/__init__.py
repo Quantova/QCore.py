@@ -34,6 +34,12 @@ def generate_seed():
     return secrets.token_bytes(32).hex()
 
 
+def _is_mainnet_id(chain_id):
+    # The canonical mainnet name is still an open convention (the chain crate's id vs the "Q-main-net-1"
+    # preset), so until it is settled the gate prompts for either candidate rather than miss the real one.
+    return chain_id == mainnet_chain_id() or chain_id == chain_id_from_name("Q-main-net-1")
+
+
 __all__ = [
     "Client",
     "Network",
@@ -222,7 +228,7 @@ class Client:
                 f"the gateway reports chain {name} but this client is configured for {configured}; "
                 "refusing to sign a transaction that would be valid on a network you did not choose"
             )
-        if not configured and name == "Q-main-net-1" and not self.acknowledge_mainnet:
+        if not configured and not self.acknowledge_mainnet and _is_mainnet_id(chain_id_from_name(name)):
             raise ValueError(
                 f"the gateway reports the mainnet chain {name} but this client did not choose a "
                 "network; refusing to sign a mainnet transaction without acknowledge_mainnet True"
