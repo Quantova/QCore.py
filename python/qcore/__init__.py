@@ -35,9 +35,7 @@ def generate_seed():
 
 
 def _is_mainnet_id(chain_id):
-    # The canonical mainnet name is still an open convention (the chain crate's id vs the "Q-main-net-1"
-    # preset), so until it is settled the gate prompts for either candidate rather than miss the real one.
-    return chain_id == mainnet_chain_id() or chain_id == chain_id_from_name("Q-main-net-1")
+    return chain_id == mainnet_chain_id()
 
 
 __all__ = [
