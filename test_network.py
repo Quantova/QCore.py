@@ -66,6 +66,15 @@ def main():
     ok("an acknowledged mainnet client passes the guard",
        over_url_acked._guard_mainnet() is None)
 
+    plain = Client("https://gateway.example")
+    throws("a plain url client refuses the reported mainnet chain without acknowledgement",
+           lambda: plain._signing_chain_id({"chain_id": "Q-main-net-1"}))
+    ok("a plain url client still binds a testnet chain the gateway reports",
+       plain._signing_chain_id({"chain_id": "Q-test-net-1"}) is not None)
+    plain_acked = Client("https://gateway.example", acknowledge_mainnet=True)
+    ok("an acknowledged plain url client binds the reported mainnet chain",
+       plain_acked._signing_chain_id({"chain_id": "Q-main-net-1"}) is not None)
+
     if failures > 0:
         print("\nnetwork: " + str(failures) + " checks failed")
         sys.exit(1)

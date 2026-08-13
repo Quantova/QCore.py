@@ -220,6 +220,11 @@ class Client:
                 f"the gateway reports chain {name} but this client is configured for {configured}; "
                 "refusing to sign a transaction that would be valid on a network you did not choose"
             )
+        if not configured and name == "Q-main-net-1" and not self.acknowledge_mainnet:
+            raise ValueError(
+                f"the gateway reports the mainnet chain {name} but this client did not choose a "
+                "network; refusing to sign a mainnet transaction without acknowledge_mainnet True"
+            )
         return chain_id_from_name(name)
 
     def _call(self, method, body):
