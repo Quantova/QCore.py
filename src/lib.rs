@@ -206,6 +206,75 @@ fn block_by_height_body(height: u64) -> String {
     qcore::block_by_height_body(height)
 }
 
+fn parse_typed_fields(fields_json: &str) -> PyResult<Vec<qcore::contract::TypedField>> {
+    let parsed = qcore::json::parse(fields_json).map_err(PyValueError::new_err)?;
+    let items = match &parsed {
+        qcore::json::Json::Array(items) => items,
+        _ => return Err(PyValueError::new_err("the signed order fields must be a JSON array")),
+    };
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let offset = item
+            .get("offset")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| PyValueError::new_err("a signed order field needs a numeric offset"))?;
+        let width = item
+            .get("width")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| PyValueError::new_err("a signed order field needs a numeric width"))?;
+        let value = item
+            .get("value")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| PyValueError::new_err("a signed order field needs a string value"))?
+            .to_string();
+        out.push(qcore::contract::TypedField { offset, width, value });
+    }
+    Ok(out)
+}
+
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn build_typed_order_call(
+    chain_id: u64,
+    contract: &str,
+    selector_hex: &str,
+    scheme_off: u64,
+    ptr_off: u64,
+    region_off: u64,
+    fields_json: &str,
+    owner_seed_hex: &str,
+    owner_index: u64,
+    nonce: u64,
+) -> PyResult<String> {
+    let selector: [u8; 4] = qcore::json::from_hex(selector_hex)
+        .map_err(PyValueError::new_err)?
+        .try_into()
+        .map_err(|_| PyValueError::new_err("the selector is 4 bytes of hex"))?;
+    let fields = parse_typed_fields(fields_json)?;
+    let order = qcore::contract::build_order_from_typed(
+        chain_id,
+        contract,
+        selector,
+        scheme_off,
+        ptr_off,
+        region_off,
+        &fields,
+        &*seed(owner_seed_hex)?,
+        owner_index,
+        nonce,
+    )
+    .map_err(PyValueError::new_err)?;
+    Ok(qcore::json::object(vec![
+        ("call_args", qcore::json::Json::str(qcore::json::to_hex(&order.call_args))),
+        ("message", qcore::json::Json::str(qcore::json::to_hex(&order.message))),
+        ("signature", qcore::json::Json::str(qcore::json::to_hex(&order.signature))),
+        ("public_key", qcore::json::Json::str(qcore::json::to_hex(&order.public_key))),
+        ("signer", qcore::json::Json::str(qcore::json::to_hex(&order.signer))),
+        ("nonce", qcore::json::Json::Int(order.nonce)),
+    ])
+    .render())
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(address, m)?)?;
@@ -216,6 +285,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign_call, m)?)?;
     m.add_function(wrap_pyfunction!(sign_payable_call, m)?)?;
     m.add_function(wrap_pyfunction!(sign_register, m)?)?;
+    m.add_function(wrap_pyfunction!(build_typed_order_call, m)?)?;
     m.add_function(wrap_pyfunction!(chain_id_from_name, m)?)?;
     m.add_function(wrap_pyfunction!(local_chain_id, m)?)?;
     m.add_function(wrap_pyfunction!(testnet_chain_id, m)?)?;
