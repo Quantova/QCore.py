@@ -97,8 +97,7 @@ def _require_safe_transport(base):
 
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        _require_safe_transport(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        raise RuntimeError("an RPC endpoint has no reason to redirect")
 
 
 _OPENER = urllib.request.build_opener(_SafeRedirectHandler())
