@@ -3,7 +3,7 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use zeroize::{Zeroize, Zeroizing};
+use qtv_wipe::{Zeroize, Zeroizing};
 
 fn seed(seed_hex: &str) -> PyResult<Zeroizing<[u8; 32]>> {
     let mut bytes = qcore::json::from_hex(seed_hex).map_err(PyValueError::new_err)?;
