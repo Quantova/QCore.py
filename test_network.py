@@ -75,6 +75,15 @@ def main():
     ok("an acknowledged plain url client binds the reported mainnet chain",
        plain_acked._signing_chain_id({"chain_id": "Q-main-net-1"}) is not None)
 
+    inconsistent = Client("https://rpc.quantova.org", network=Network(
+        name="custom", chain_id="Q-main-net-1", rpc_url="https://rpc.quantova.org", is_mainnet=False))
+    throws("a configured mainnet id is refused even with the is_mainnet flag off and no acknowledgement",
+           lambda: inconsistent._signing_chain_id({"chain_id": "Q-main-net-1"}))
+    inconsistent_acked = Client("https://rpc.quantova.org", acknowledge_mainnet=True, network=Network(
+        name="custom", chain_id="Q-main-net-1", rpc_url="https://rpc.quantova.org", is_mainnet=False))
+    ok("acknowledging lets the configured mainnet-id client sign",
+       inconsistent_acked._signing_chain_id({"chain_id": "Q-main-net-1"}) is not None)
+
     if failures > 0:
         print("\nnetwork: " + str(failures) + " checks failed")
         sys.exit(1)

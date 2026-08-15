@@ -225,12 +225,13 @@ class Client:
                 f"the gateway reports chain {name} but this client is configured for {configured}; "
                 "refusing to sign a transaction that would be valid on a network you did not choose"
             )
-        if not configured and not self.acknowledge_mainnet and _is_mainnet_id(chain_id_from_name(name)):
+        cid = chain_id_from_name(name)
+        if not self.acknowledge_mainnet and _is_mainnet_id(cid):
             raise ValueError(
-                f"the gateway reports the mainnet chain {name} but this client did not choose a "
-                "network; refusing to sign a mainnet transaction without acknowledge_mainnet True"
+                f"the gateway reports the mainnet chain {name}; "
+                "refusing to sign a mainnet transaction without acknowledge_mainnet True"
             )
-        return chain_id_from_name(name)
+        return cid
 
     def _call(self, method, body):
         req = urllib.request.Request(
