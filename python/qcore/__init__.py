@@ -6,6 +6,7 @@
 import ipaddress
 import json
 import secrets
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -241,11 +242,19 @@ class Client:
             method="POST",
         )
         try:
+            deadline = time.monotonic() + 20.0
             with _OPENER.open(req, timeout=20) as res:
-                raw = res.read(_MAX_RESPONSE + 1)
+                raw = bytearray()
+                while len(raw) <= _MAX_RESPONSE:
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("the response did not arrive in time")
+                    chunk = res.read(min(65536, _MAX_RESPONSE + 1 - len(raw)))
+                    if not chunk:
+                        break
+                    raw.extend(chunk)
                 if len(raw) > _MAX_RESPONSE:
                     raise RuntimeError("the response is too large")
-                return _loads(raw)
+                return _loads(bytes(raw))
         except urllib.error.HTTPError as err:
             data = _loads(err.read(_MAX_RESPONSE))
             message = data.get("message") or data.get("error") if isinstance(data, dict) else None
