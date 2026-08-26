@@ -156,6 +156,22 @@ def _fee_ceiling(max_fee):
     return ceiling
 
 
+def _account_nonce(nonce):
+    # The nonce is the one signing input taken from the gateway. A JSON fractional or exponent number
+    # decodes to a float that int() would truncate into a different signed nonce, so a float is refused
+    # rather than silently rounded, and anything outside the unsigned 64 bit range is refused too. A
+    # Python int stays exact, so a legitimate nonce between 2^53 and 2^64 is still accepted.
+    if isinstance(nonce, bool) or isinstance(nonce, float):
+        raise RuntimeError("the gateway reported a nonce that is not a whole number")
+    try:
+        parsed = int(nonce)
+    except (TypeError, ValueError):
+        raise RuntimeError("the gateway reported a nonce that is not a whole number")
+    if parsed < 0 or parsed > 0xFFFFFFFFFFFFFFFF:
+        raise RuntimeError("the gateway reported a nonce outside the unsigned 64 bit range")
+    return parsed
+
+
 DENOMINATION = "Quon"
 DECIMALS = 6
 
@@ -239,6 +255,10 @@ class Client:
         name = info.get("chain_id") if isinstance(info, dict) else None
         if not name:
             raise RuntimeError("the gateway did not report a chain id to bind the signature to")
+        if not isinstance(name, str):
+            raise RuntimeError(
+                "the gateway reported a chain id that is not a string, refusing to bind a signature to it"
+            )
         configured = self.network.chain_id if self.network else None
         if configured and name != configured:
             raise RuntimeError(
@@ -307,7 +327,7 @@ class Client:
         nonce = acct.get("nonce") if isinstance(acct, dict) else None
         if nonce is None:
             raise RuntimeError("the gateway did not report a nonce")
-        signed = _loads(sign_transfer(seed_hex, index, to, int(amount), int(nonce), int(fee), chain_id))
+        signed = _loads(sign_transfer(seed_hex, index, to, int(amount), _account_nonce(nonce), int(fee), chain_id))
         outcome = self.submit(signed["tx_hex"])
         return signed, outcome
 
@@ -326,7 +346,7 @@ class Client:
         nonce = acct.get("nonce") if isinstance(acct, dict) else None
         if nonce is None:
             raise RuntimeError("the gateway did not report a nonce")
-        signed = _loads(sign_register(seed_hex, index, int(nonce), int(fee), chain_id))
+        signed = _loads(sign_register(seed_hex, index, _account_nonce(nonce), int(fee), chain_id))
         outcome = self.submit(signed["tx_hex"])
         return signed, outcome
 
@@ -347,6 +367,6 @@ class Client:
         nonce = acct.get("nonce") if isinstance(acct, dict) else None
         if nonce is None:
             raise RuntimeError("the gateway did not report a nonce")
-        signed = _loads(sign_call(seed_hex, index, target, args_hex, int(nonce), int(meter_limit), int(fee), chain_id))
+        signed = _loads(sign_call(seed_hex, index, target, args_hex, _account_nonce(nonce), int(meter_limit), int(fee), chain_id))
         outcome = self.submit(signed["tx_hex"])
         return signed, outcome
