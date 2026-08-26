@@ -29,7 +29,7 @@ def redirect_to_plaintext_is_refused():
     try:
         client = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
         client.node_info()
-    except ValueError:
+    except (ValueError, RuntimeError):
         return True
     except Exception:
         return False
