@@ -64,6 +64,25 @@ __all__ = [
 
 _MAX_RESPONSE = 8 * 1024 * 1024
 
+_DEADLINE_SECONDS = 20.0
+
+
+def _read_bounded(stream):
+    # read1 returns after a single socket read, so a gateway dribbling a body under the socket
+    # timeout is still cut off at the deadline. The reply and the error path both read through here.
+    deadline = time.monotonic() + _DEADLINE_SECONDS
+    raw = bytearray()
+    while len(raw) <= _MAX_RESPONSE:
+        if time.monotonic() > deadline:
+            raise RuntimeError("the response did not arrive in time")
+        chunk = stream.read1(min(65536, _MAX_RESPONSE + 1 - len(raw)))
+        if not chunk:
+            break
+        raw.extend(chunk)
+    if len(raw) > _MAX_RESPONSE:
+        raise RuntimeError("the response is too large")
+    return bytes(raw)
+
 
 def _loads(raw):
     try:
@@ -242,21 +261,10 @@ class Client:
             method="POST",
         )
         try:
-            deadline = time.monotonic() + 20.0
             with _OPENER.open(req, timeout=20) as res:
-                raw = bytearray()
-                while len(raw) <= _MAX_RESPONSE:
-                    if time.monotonic() > deadline:
-                        raise RuntimeError("the response did not arrive in time")
-                    chunk = res.read(min(65536, _MAX_RESPONSE + 1 - len(raw)))
-                    if not chunk:
-                        break
-                    raw.extend(chunk)
-                if len(raw) > _MAX_RESPONSE:
-                    raise RuntimeError("the response is too large")
-                return _loads(bytes(raw))
+                return _loads(_read_bounded(res))
         except urllib.error.HTTPError as err:
-            data = _loads(err.read(_MAX_RESPONSE))
+            data = _loads(_read_bounded(err))
             message = data.get("message") or data.get("error") if isinstance(data, dict) else None
             raise RuntimeError(message or f"status {err.code}")
 
