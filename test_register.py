@@ -15,7 +15,6 @@ except ModuleNotFoundError:
 
 state = {"fee": "100", "submitted": 0, "last_tx": None, "asked_account": None}
 
-
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -45,11 +44,9 @@ class Handler(BaseHTTPRequestHandler):
         else:
             send({"error": "unknown_method", "message": self.path}, 404)
 
-
 def fail(message):
     print("FAIL " + message)
     sys.exit(1)
-
 
 def main():
     server = HTTPServer(("127.0.0.1", 0), Handler)
@@ -107,7 +104,6 @@ def main():
 
     server.shutdown()
     print("register: all cases passed")
-
 
 if __name__ == "__main__":
     main()

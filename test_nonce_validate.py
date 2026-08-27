@@ -15,7 +15,6 @@ except ModuleNotFoundError:
 
 state = {"nonce": 0, "submitted": 0}
 
-
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -43,11 +42,9 @@ class Handler(BaseHTTPRequestHandler):
         else:
             send({"error": "unknown_method", "message": self.path}, 404)
 
-
 def fail(message):
     print("FAIL " + message)
     sys.exit(1)
-
 
 def main():
     for bad in (1.5, 4.9, 2.0, -1, 2 ** 64, "1.5", True):
@@ -81,7 +78,6 @@ def main():
         fail("an honest nonce did not submit exactly once")
 
     print("ok nonce validate")
-
 
 if __name__ == "__main__":
     main()

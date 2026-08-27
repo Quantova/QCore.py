@@ -10,7 +10,6 @@ except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
     import qcore
 
-
 def main():
     seed = "11" * 32
     good = qcore.address(seed, 0)
@@ -38,7 +37,6 @@ def main():
             raise AssertionError(f"sign_call signed a bad target {bad!r}")
 
     print("exported sign validation: all cases passed")
-
 
 if __name__ == "__main__":
     main()

@@ -34,10 +34,8 @@ from ._native import (
 def generate_seed():
     return secrets.token_bytes(32).hex()
 
-
 def _is_mainnet_id(chain_id):
     return chain_id == mainnet_chain_id()
-
 
 __all__ = [
     "Client",
@@ -66,10 +64,7 @@ _MAX_RESPONSE = 8 * 1024 * 1024
 
 _DEADLINE_SECONDS = 20.0
 
-
 def _read_bounded(stream):
-    # read1 returns after a single socket read, so a gateway dribbling a body under the socket
-    # timeout is still cut off at the deadline. The reply and the error path both read through here.
     deadline = time.monotonic() + _DEADLINE_SECONDS
     raw = bytearray()
     while len(raw) <= _MAX_RESPONSE:
@@ -83,13 +78,11 @@ def _read_bounded(stream):
         raise RuntimeError("the response is too large")
     return bytes(raw)
 
-
 def _loads(raw):
     try:
         return json.loads(raw)
     except (ValueError, RecursionError):
         raise RuntimeError("the gateway returned a response that is not valid JSON")
-
 
 def _is_loopback(host):
     if host is None:
@@ -100,7 +93,6 @@ def _is_loopback(host):
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
-
 
 def _require_safe_transport(base):
     parts = urllib.parse.urlsplit(base)
@@ -114,20 +106,13 @@ def _require_safe_transport(base):
         )
     return base
 
-
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise RuntimeError("an RPC endpoint has no reason to redirect")
 
-
 _OPENER = urllib.request.build_opener(_SafeRedirectHandler())
 
-
 def _check_amount(amount):
-    # Match the JavaScript checkAmount. A Python int is already arbitrary precision, so it and a
-    # decimal string are the only accepted forms. A float would truncate silently through int()
-    # and sign a wrong amount, and a bool or anything else is not a whole number, so all are
-    # refused before anything is signed.
     if isinstance(amount, bool) or not isinstance(amount, (int, str)):
         raise ValueError(
             "the amount must be a whole number int or a decimal string, never a float"
@@ -139,10 +124,7 @@ def _check_amount(amount):
     if value < 0:
         raise ValueError("the amount cannot be negative")
 
-
 def _fee_ceiling(max_fee):
-    # The same rule as the amount. A float ceiling would truncate through int() and could set the
-    # ceiling higher than intended, so reject it and any non integer non string before the check.
     if isinstance(max_fee, bool) or not isinstance(max_fee, (int, str)):
         raise ValueError(
             "the maximum fee must be a whole number int or a decimal string, never a float"
@@ -155,12 +137,7 @@ def _fee_ceiling(max_fee):
         raise ValueError("the maximum fee cannot be negative")
     return ceiling
 
-
 def _account_nonce(nonce):
-    # The nonce is the one signing input taken from the gateway. A JSON fractional or exponent number
-    # decodes to a float that int() would truncate into a different signed nonce, so a float is refused
-    # rather than silently rounded, and anything outside the unsigned 64 bit range is refused too. A
-    # Python int stays exact, so a legitimate nonce between 2^53 and 2^64 is still accepted.
     if isinstance(nonce, bool) or isinstance(nonce, float):
         raise RuntimeError("the gateway reported a nonce that is not a whole number")
     try:
@@ -171,10 +148,8 @@ def _account_nonce(nonce):
         raise RuntimeError("the gateway reported a nonce outside the unsigned 64 bit range")
     return parsed
 
-
 DENOMINATION = "Quon"
 DECIMALS = 6
-
 
 class Network:
     def __init__(self, name, chain_id=None, rpc_url=None, explorer_url=None,
@@ -202,7 +177,6 @@ class Network:
     def for_url(cls, base):
         return cls(name="custom", chain_id=None, rpc_url=base, is_mainnet=False)
 
-
 def _transfer_fee(info):
     fee_obj = info.get("fee") if isinstance(info, dict) else None
     if not isinstance(fee_obj, dict):
@@ -213,7 +187,6 @@ def _transfer_fee(info):
     if isinstance(fee, bool) or isinstance(fee, float):
         raise RuntimeError("the gateway reported a non integer transfer fee")
     return fee
-
 
 class Client:
     def __init__(self, target, acknowledge_mainnet=False, network=None):
@@ -237,9 +210,6 @@ class Client:
         self.base = _require_safe_transport(base).rstrip("/")
 
     def _guard_mainnet(self):
-        # The mainnet decision comes from the network this Client was configured with, never from
-        # the gateway's self reported chain id, so a hostile gateway cannot suppress the prompt by
-        # claiming to be a testnet.
         on_mainnet = self.network is not None and self.network.is_mainnet
         if on_mainnet and not self.acknowledge_mainnet:
             label = self.network.chain_id if self.network else ""
@@ -249,11 +219,6 @@ class Client:
             )
 
     def _signing_chain_id(self, info):
-        # Bind the signature to the network the gateway says it serves, computed from the reported
-        # name with the same hash the node uses, so the transaction is valid only on that network
-        # and a rename is followed without a code change. When this Client was configured with a
-        # known chain id, the reported name must match it, so a hostile gateway cannot bind a
-        # signature to a network the caller did not choose and then replay it there.
         name = info.get("chain_id") if isinstance(info, dict) else None
         if not name:
             raise RuntimeError("the gateway did not report a chain id to bind the signature to")

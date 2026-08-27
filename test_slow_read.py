@@ -13,12 +13,7 @@ except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
     import qcore
 
-
 def dribbler(status):
-    # A hostile gateway that answers with a status and a large promised length, then dribbles the
-    # body one byte at a time, each read staying under the socket timeout, and holds the socket
-    # open. A client that reads with a plain buffered read blocks inside a single read past its
-    # wall clock budget, so this stands in for the unbounded hang.
     srv = socket.socket()
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind(("127.0.0.1", 0))
@@ -51,7 +46,6 @@ def dribbler(status):
     threading.Thread(target=serve, daemon=True).start()
     return srv, port
 
-
 def timed_call(port):
     client = qcore.Client(f"http://127.0.0.1:{port}")
     start = time.monotonic()
@@ -60,7 +54,6 @@ def timed_call(port):
     except Exception as err:  # noqa: BLE001 - the test classifies the failure below
         return time.monotonic() - start, err
     return time.monotonic() - start, None
-
 
 def main():
     saved = qcore._DEADLINE_SECONDS
@@ -88,7 +81,6 @@ def main():
         qcore._DEADLINE_SECONDS = saved
 
     print("\nslow read: both the reply and the error path honour the read deadline")
-
 
 if __name__ == "__main__":
     main()

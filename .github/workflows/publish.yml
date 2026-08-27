@@ -24,14 +24,38 @@ jobs:
           - { runner: macos-latest, target: aarch64 }
           - { runner: windows-latest, target: x64 }
     steps:
+      # The extension crate depends on sibling repos by relative path, so the wheel can only be built
+      # from source when those siblings are present. Checking them out at pinned commits lets each
+      # runner compile the native module from the reviewed Rust source rather than from a vendored or
+      # committed binary, so a tampered artifact cannot be published under trusted publishing.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          path: QCore.py
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Quantova/QCore.rs
+          ref: 51cd8850844a67bd7eefd1908aa21076441b6f32
+          path: QCore.rs
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Quantova/Quantova-Chain
+          ref: 8c0417e8d248399f4c6a4ed567230dac4cde43e8
+          path: Quantova-Chain
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Quantova/QVM
+          ref: cf3226afb6a5f586e86348b3ee3cefa7bc91ce98
+          path: QVM
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.x'
       - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
         with:
+          working-directory: QCore.py
           target: ${{ matrix.target }}
           args: --release --out dist
           manylinux: auto
@@ -39,22 +63,42 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wheels-${{ matrix.runner }}-${{ matrix.target }}
-          path: dist
+          path: QCore.py/dist
 
   sdist:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          path: QCore.py
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Quantova/QCore.rs
+          ref: 51cd8850844a67bd7eefd1908aa21076441b6f32
+          path: QCore.rs
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Quantova/Quantova-Chain
+          ref: 8c0417e8d248399f4c6a4ed567230dac4cde43e8
+          path: Quantova-Chain
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Quantova/QVM
+          ref: cf3226afb6a5f586e86348b3ee3cefa7bc91ce98
+          path: QVM
           persist-credentials: false
       - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
         with:
+          working-directory: QCore.py
           command: sdist
           args: --out dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wheels-sdist
-          path: dist
+          path: QCore.py/dist
 
   publish:
     needs: [wheels, sdist]

@@ -17,11 +17,9 @@ VECTORS = os.path.join(HERE, "conformance")
 
 failures = 0
 
-
 def load(name):
     with open(os.path.join(VECTORS, name), "r", encoding="utf8") as handle:
         return json.load(handle)
-
 
 def check(label, got, want):
     global failures
@@ -31,10 +29,8 @@ def check(label, got, want):
         failures += 1
         print("  FAIL " + label + "\n         got  " + repr(got) + "\n         want " + repr(want))
 
-
 def bech32_equal(a, b):
     return str(a).lower() == str(b).lower()
-
 
 class Reader:
     def __init__(self, hexstr):
@@ -51,7 +47,6 @@ class Reader:
         self.at += n
         return chunk
 
-
 def parse_body(hexstr):
     r = Reader(hexstr)
     sender = r.take(r.uint(8)).hex()
@@ -66,7 +61,6 @@ def parse_body(hexstr):
             "target": target, "args": args, "value": value, "chain_id": chain_id,
             "length": r.at}
 
-
 def address_vector():
     print("address.derivation")
     v = load("address.derivation.json")
@@ -74,7 +68,6 @@ def address_vector():
     check("address matches the vector as bech32",
           bech32_equal(derived, v["canonical"]) and qcore.valid_address(derived), True)
     check("the rendered address is uppercase Q1", derived == derived.upper(), True)
-
 
 def transaction_vector():
     print("transaction.transfer")
@@ -115,7 +108,6 @@ def transaction_vector():
     check("the transaction id is a qtx identifier",
           bool(re.match(r"^qtx1[0-9a-z]+$", signed["tx_id"], re.IGNORECASE)), True)
 
-
 def main():
     address_vector()
     transaction_vector()
@@ -123,7 +115,6 @@ def main():
         print("\nconformance: " + str(failures) + " checks failed")
         sys.exit(1)
     print("\nconformance: the Python binding matches the frozen vectors")
-
 
 if __name__ == "__main__":
     main()

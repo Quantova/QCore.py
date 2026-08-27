@@ -15,7 +15,6 @@ except ModuleNotFoundError:
 
 state = {"fee": "100", "submitted": 0, "fee_bad": False}
 
-
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -44,11 +43,9 @@ class Handler(BaseHTTPRequestHandler):
         else:
             send({"error": "unknown_method", "message": self.path}, 404)
 
-
 def fail(message):
     print("FAIL " + message)
     sys.exit(1)
-
 
 def main():
     server = HTTPServer(("127.0.0.1", 0), Handler)
@@ -95,8 +92,6 @@ def main():
     if state["submitted"] != 2:
         fail("a bad ceiling must fail before submitting")
 
-    # A float amount or a float ceiling is refused before any network call, the same way the
-    # JavaScript binding refuses a JavaScript number, because int() would truncate it silently.
     for bad_amount in (1.5, 1000.0, True):
         threw = False
         try:
@@ -149,7 +144,6 @@ def main():
 
     server.shutdown()
     print("fee ceiling: all cases passed")
-
 
 if __name__ == "__main__":
     main()

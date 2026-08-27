@@ -12,7 +12,6 @@ except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
     import qcore
 
-
 def redirect_to_plaintext_is_refused():
     class Redirector(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -37,7 +36,6 @@ def redirect_to_plaintext_is_refused():
         server.shutdown()
     return False
 
-
 def rejects(base):
     try:
         qcore.Client(base)
@@ -45,14 +43,12 @@ def rejects(base):
         return True
     return False
 
-
 def accepts(base):
     try:
         qcore.Client(base)
     except ValueError:
         return False
     return True
-
 
 def main():
     assert accepts("http://127.0.0.1:8080"), "loopback http must be accepted"
@@ -69,7 +65,6 @@ def main():
     assert redirect_to_plaintext_is_refused(), "a redirect to a plaintext non loopback host must be refused"
 
     print("transport guard: all cases passed")
-
 
 if __name__ == "__main__":
     main()

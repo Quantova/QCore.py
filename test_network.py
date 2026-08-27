@@ -14,7 +14,6 @@ from qcore import Client, Network
 
 failures = 0
 
-
 def ok(label, cond):
     global failures
     if cond:
@@ -23,7 +22,6 @@ def ok(label, cond):
         failures += 1
         print("  FAIL " + label)
 
-
 def throws(label, fn):
     threw = False
     try:
@@ -31,7 +29,6 @@ def throws(label, fn):
     except Exception:
         threw = True
     ok(label, threw)
-
 
 def main():
     testnet = Network.testnet()
@@ -88,7 +85,6 @@ def main():
         print("\nnetwork: " + str(failures) + " checks failed")
         sys.exit(1)
     print("\nnetwork: the safety gate holds")
-
 
 if __name__ == "__main__":
     main()

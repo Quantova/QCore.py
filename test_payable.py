@@ -13,7 +13,6 @@ except ModuleNotFoundError:
 
 failures = 0
 
-
 def ok(label, cond):
     global failures
     if cond:
@@ -22,11 +21,9 @@ def ok(label, cond):
         failures += 1
         print("  FAIL " + label)
 
-
 LOCAL_CHAIN_ID = qcore.local_chain_id()
 MAINNET_CHAIN_ID = qcore.mainnet_chain_id()
 TESTNET_CHAIN_ID = qcore.testnet_chain_id()
-
 
 def main():
     seed = "0b" * 32
@@ -69,7 +66,6 @@ def main():
         print("\npayable: " + str(failures) + " checks failed")
         sys.exit(1)
     print("\npayable: all cases passed")
-
 
 if __name__ == "__main__":
     main()

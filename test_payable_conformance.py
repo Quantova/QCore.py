@@ -17,11 +17,9 @@ VECTORS = os.path.join(HERE, "conformance")
 
 failures = 0
 
-
 def load(name):
     with open(os.path.join(VECTORS, name), "r", encoding="utf8") as handle:
         return json.load(handle)
-
 
 def check(label, got, want):
     global failures
@@ -31,13 +29,10 @@ def check(label, got, want):
         failures += 1
         print("  FAIL " + label + "\n         got  " + repr(got) + "\n         want " + repr(want))
 
-
 def bech32_equal(a, b):
     return str(a).lower() == str(b).lower()
 
-
 CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-
 
 def decode_payload_hex(address):
     lowered = address.lower()
@@ -54,7 +49,6 @@ def decode_payload_hex(address):
             out.append((acc >> bits) & 0xFF)
     return bytes(out).hex()
 
-
 class Reader:
     def __init__(self, hexstr):
         self.data = bytes.fromhex(hexstr)
@@ -70,7 +64,6 @@ class Reader:
         self.at += n
         return chunk
 
-
 def parse_payable_body(hexstr):
     r = Reader(hexstr)
     sender = r.take(r.uint(8)).hex()
@@ -84,7 +77,6 @@ def parse_payable_body(hexstr):
     return {"sender": sender, "nonce": nonce, "meter": meter, "fee": fee,
             "target": target, "args": args, "value": value, "chain_id": chain_id,
             "length": r.at}
-
 
 def payable_vector():
     print("transaction.payable")
@@ -126,14 +118,12 @@ def payable_vector():
         v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"])))
     check("a lowercase target signs the same bytes", lower["tx_hex"] == signed["tx_hex"], True)
 
-
 def main():
     payable_vector()
     if failures > 0:
         print("\npayable conformance: " + str(failures) + " checks failed")
         sys.exit(1)
     print("\npayable conformance: the Python binding matches the frozen vector")
-
 
 if __name__ == "__main__":
     main()

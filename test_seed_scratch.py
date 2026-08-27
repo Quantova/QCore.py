@@ -10,7 +10,6 @@ except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
     import qcore
 
-
 def main():
     seed = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
     chain = qcore.testnet_chain_id()
@@ -31,7 +30,6 @@ def main():
             raise AssertionError(f"a seed that is not thirty two bytes was accepted {bad!r}")
 
     print("seed scratch: decode through the zeroizing handle passed")
-
 
 if __name__ == "__main__":
     main()
