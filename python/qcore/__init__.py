@@ -210,6 +210,8 @@ def _transfer_fee(info):
     fee = fee_obj.get("transfer_quon")
     if fee is None:
         raise RuntimeError("the gateway did not report a transfer fee")
+    if isinstance(fee, bool) or isinstance(fee, float):
+        raise RuntimeError("the gateway reported a non integer transfer fee")
     return fee
 
 
