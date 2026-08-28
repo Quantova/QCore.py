@@ -39,7 +39,7 @@ phrase = qcore.mnemonic_from_seed(seed)  # the only backup, shown once and kept 
 import qcore
 
 client = qcore.Client("http://127.0.0.1:8645")
-seed = "0b" * 32
+seed = qcore.generate_seed()
 to = client.address(seed, 1)
 
 # Reads the fee and the nonce, signs inside the core, and submits. Nothing is
@@ -63,7 +63,7 @@ A call to a contract can carry a value in Quon alongside its arguments, and ever
 ```python
 import qcore
 
-seed = "0b" * 32
+seed = qcore.generate_seed()
 target = qcore.address(seed, 1)
 
 # The nonce and the fee come from the account and the node the same way they do
