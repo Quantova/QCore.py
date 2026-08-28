@@ -6,6 +6,6 @@
 # Quantova-Chain onto QVM, so their source commits are recorded here to keep a
 # published build reproducible.
 
-Q-Crypto        33c7e9395ad23f07019909470d319211213e904f
-Quantova-Chain  547c69042c969fa0974d7101fbd028bcdcededa4
-QVM             13c045217eb23f4d3016e6c0c80e567a53ccbfb6
+Q-Crypto        4d73a36c112b91a6a25a6a876f54cdccb729c7de
+Quantova-Chain  a0b946188b8473a69ec93ad2b146b70eef40213f
+QVM             7a10d82f209013d543927ea4480ea097665c739b
