@@ -7,5 +7,6 @@
 # published build reproducible.
 
 Q-Crypto        4d73a36c112b91a6a25a6a876f54cdccb729c7de
-Quantova-Chain  a0b946188b8473a69ec93ad2b146b70eef40213f
-QVM             7a10d82f209013d543927ea4480ea097665c739b
+Quantova-Chain  2ec106731300355424d873c7d666ac15e9ee5be4
+QVM             db3c3b557c13bd2389b024cca4a2f747e44db5f9
+QCore.rs        8aa1df587017c5bc37effc38a5d9afd8c1ceb7b1
