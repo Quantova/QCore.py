@@ -210,7 +210,11 @@ fn parse_typed_fields(fields_json: &str) -> PyResult<Vec<qcore::contract::TypedF
     let parsed = qcore::json::parse(fields_json).map_err(PyValueError::new_err)?;
     let items = match &parsed {
         qcore::json::Json::Array(items) => items,
-        _ => return Err(PyValueError::new_err("the signed order fields must be a JSON array")),
+        _ => {
+            return Err(PyValueError::new_err(
+                "the signed order fields must be a JSON array",
+            ))
+        }
     };
     let mut out = Vec::with_capacity(items.len());
     for item in items {
@@ -227,7 +231,11 @@ fn parse_typed_fields(fields_json: &str) -> PyResult<Vec<qcore::contract::TypedF
             .and_then(|v| v.as_str())
             .ok_or_else(|| PyValueError::new_err("a signed order field needs a string value"))?
             .to_string();
-        out.push(qcore::contract::TypedField { offset, width, value });
+        out.push(qcore::contract::TypedField {
+            offset,
+            width,
+            value,
+        });
     }
     Ok(out)
 }
@@ -265,11 +273,26 @@ fn build_typed_order_call(
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
-        ("call_args", qcore::json::Json::str(qcore::json::to_hex(&order.call_args))),
-        ("message", qcore::json::Json::str(qcore::json::to_hex(&order.message))),
-        ("signature", qcore::json::Json::str(qcore::json::to_hex(&order.signature))),
-        ("public_key", qcore::json::Json::str(qcore::json::to_hex(&order.public_key))),
-        ("signer", qcore::json::Json::str(qcore::json::to_hex(&order.signer))),
+        (
+            "call_args",
+            qcore::json::Json::str(qcore::json::to_hex(&order.call_args)),
+        ),
+        (
+            "message",
+            qcore::json::Json::str(qcore::json::to_hex(&order.message)),
+        ),
+        (
+            "signature",
+            qcore::json::Json::str(qcore::json::to_hex(&order.signature)),
+        ),
+        (
+            "public_key",
+            qcore::json::Json::str(qcore::json::to_hex(&order.public_key)),
+        ),
+        (
+            "signer",
+            qcore::json::Json::str(qcore::json::to_hex(&order.signer)),
+        ),
         ("nonce", qcore::json::Json::Int(order.nonce)),
     ])
     .render())
