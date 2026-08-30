@@ -50,6 +50,8 @@ jobs:
       - name: build and test
         working-directory: QCore.py
         run: |
-          python -m pip install --upgrade pip maturin pytest
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip maturin pytest
           maturin develop --release --locked
           python -m pytest test_conformance.py test_payable_conformance.py test_sign_validate.py test_fee_cap.py -q
