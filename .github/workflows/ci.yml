@@ -54,4 +54,7 @@ jobs:
           . .venv/bin/activate
           pip install --upgrade pip maturin pytest
           maturin develop --release --locked
-          python -m pytest test_conformance.py test_payable_conformance.py test_sign_validate.py test_fee_cap.py -q
+          python test_conformance.py
+          python test_payable_conformance.py
+          python test_sign_validate.py
+          python test_fee_cap.py
