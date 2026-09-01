@@ -38,8 +38,9 @@ phrase = qcore.mnemonic_from_seed(seed)  # the only backup, shown once and kept 
 ```python
 import qcore
 
-client = qcore.Client("http://127.0.0.1:8645")
+client = qcore.Client("https://rpc-testnet.quantova.org")
 seed = qcore.generate_seed()
+me = client.address(seed, 0)
 to = client.address(seed, 1)
 
 # Reads the fee and the nonce, signs inside the core, and submits. Nothing is
@@ -48,6 +49,10 @@ to = client.address(seed, 1)
 # cannot inflate the fee and drain the account.
 info = client.node_info()
 
+# A fresh account holds nothing, so fund it first. On the public testnet a POST to
+# https://rpc-testnet.quantova.org/faucet/api/claim with {"address": me, "amount": 10}
+# sends 10 TQTOV, and the payment is itself a transaction so give it a few seconds.
+#
 # A fresh account funded by a transfer arrives with a balance but no key on the
 # chain, so it signs this once to install its public key before its first send.
 client.register(seed, 0, info["fee"]["transfer_quon"])
