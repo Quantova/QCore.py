@@ -32,7 +32,7 @@ def throws(label, fn):
 
 def main():
     testnet = Network.testnet()
-    ok("testnet chain id", testnet.chain_id == "Q-test-net-1")
+    ok("testnet chain id", testnet.chain_id == "Q-test-net-3")
     ok("testnet rpc url", testnet.rpc_url == "https://rpc-testnet.quantova.org")
     ok("testnet denomination", testnet.denomination == "Quon")
     ok("testnet decimals are six", testnet.decimals == 6)
@@ -41,7 +41,7 @@ def main():
     ok("mainnet rpc is not the testnet url", Network.mainnet().rpc_url != testnet.rpc_url)
 
     client = Client(testnet)
-    ok("testnet client carries its network", client.network.chain_id == "Q-test-net-1")
+    ok("testnet client carries its network", client.network.chain_id == "Q-test-net-3")
 
     live_mainnet = Network(name="mainnet", chain_id="Q-main-net-1",
                            rpc_url="https://rpc.quantova.org", is_mainnet=True)

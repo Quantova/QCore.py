@@ -164,7 +164,7 @@ class Network:
 
     @classmethod
     def testnet(cls):
-        return cls(name="testnet", chain_id="Q-test-net-1",
+        return cls(name="testnet", chain_id="Q-test-net-3",
                    rpc_url="https://rpc-testnet.quantova.org",
                    explorer_url="https://qvmscan.io", is_mainnet=False)
 
