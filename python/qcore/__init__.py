@@ -3,6 +3,7 @@
 
 """The Quantova client core for Python."""
 
+import importlib.metadata
 import ipaddress
 import json
 import secrets
@@ -109,6 +110,13 @@ def _require_safe_transport(base):
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise RuntimeError("an RPC endpoint has no reason to redirect")
+
+try:
+    _VERSION = importlib.metadata.version("quantova-qcore")
+except importlib.metadata.PackageNotFoundError:
+    _VERSION = "0"
+
+_USER_AGENT = f"quantova-qcore/{_VERSION} (+https://quantova.org)"
 
 _OPENER = urllib.request.build_opener(_SafeRedirectHandler())
 
@@ -244,7 +252,7 @@ class Client:
         req = urllib.request.Request(
             f"{self.base}/v1/{method}",
             data=(body or "{}").encode(),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "User-Agent": _USER_AGENT},
             method="POST",
         )
         try:
