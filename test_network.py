@@ -81,8 +81,6 @@ def main():
     ok("acknowledging lets the configured mainnet-id client sign",
        inconsistent_acked._signing_chain_id({"chain_id": "Q-main-net-1"}) is not None)
 
-    # A session pins the chain it first resolved, so a gateway cannot switch chains
-    # between calls on the same client.
     pinning = Client("https://gateway.example")
     ok("the first chain resolves and pins",
        pinning._signing_chain_id({"chain_id": "Q-test-net-1"}) is not None)

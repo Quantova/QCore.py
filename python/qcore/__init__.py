@@ -216,8 +216,6 @@ class Client:
             base = str(target)
             self.network = network if isinstance(network, Network) else Network.for_url(base)
         self.base = _require_safe_transport(base).rstrip("/")
-        # The chain name observed first, pinned for the life of this client so a gateway
-        # cannot switch the signing chain mid-session.
         self._pinned_chain = self.network.chain_id if self.network else None
 
     def _guard_mainnet(self):
@@ -243,9 +241,6 @@ class Client:
                 f"the gateway reports chain {name} but this client is configured for {configured}; "
                 "refusing to sign a transaction that would be valid on a network you did not choose"
             )
-        # Pin the chain name on first sight for the life of this client, so a gateway
-        # that reported one chain cannot quietly switch to another between calls. Only a
-        # fully accepted resolution pins, so a rejected call does not fix the session.
         if self._pinned_chain is not None and name != self._pinned_chain:
             raise RuntimeError(
                 f"the gateway reports chain {name} but this session is pinned to {self._pinned_chain}; "
@@ -283,8 +278,6 @@ class Client:
 
     def account(self, addr):
         acct = self._call("get_account", account_body(addr))
-        # The gateway echoes the address it answered for. A lying gateway that returns
-        # another account's nonce is caught here before we ever sign against it.
         if isinstance(acct, dict) and acct.get("address") not in (None, addr):
             raise RuntimeError(
                 f"the gateway answered for {acct.get('address')} when asked about {addr}, refusing to trust it"
@@ -318,10 +311,6 @@ class Client:
         return address(seed_hex, index)
 
     def transfer(self, seed_hex, index, to, amount, max_fee, expected_nonce=None):
-        # A signed transaction has no expiry, so a nonce the gateway invents at a future
-        # value is a standing authorization it can broadcast later for a second payment.
-        # Pass expected_nonce to make the SDK refuse a regression or a large forward jump
-        # rather than blindly signing whatever the gateway reports.
         if not valid_address(to):
             raise ValueError("the recipient is not a Q1 address")
         _check_amount(amount)
