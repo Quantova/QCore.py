@@ -47,6 +47,12 @@ to = client.address(seed, 1)
 # signed or built in Python. The last argument is the highest fee you will accept,
 # and the core refuses to sign a fee the gateway reports above it, so a gateway
 # cannot inflate the fee and drain the account.
+#
+# Choose that ceiling yourself. Passing the gateway's own reported fee as the
+# maximum nullifies the cap, because a value can never be above itself, so a
+# malicious gateway could report any fee and it would always be accepted. Pick a
+# fixed number you are willing to pay (the testnet fee is 500 Quon).
+MAX_FEE = 1000  # Quon; the cap you enforce, not whatever the gateway reports
 info = client.node_info()
 
 # A fresh account holds nothing, so fund it first. On the public testnet a POST to
@@ -55,9 +61,9 @@ info = client.node_info()
 #
 # A fresh account funded by a transfer arrives with a balance but no key on the
 # chain, so it signs this once to install its public key before its first send.
-client.register(seed, 0, info["fee"]["transfer_quon"])
+client.register(seed, 0, MAX_FEE)
 
-signed, outcome = client.transfer(seed, 0, to, 1000, info["fee"]["transfer_quon"])
+signed, outcome = client.transfer(seed, 0, to, 1000, MAX_FEE)
 status = client.transaction(signed["tx_id"])
 ```
 

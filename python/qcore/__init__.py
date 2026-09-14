@@ -216,6 +216,9 @@ class Client:
             base = str(target)
             self.network = network if isinstance(network, Network) else Network.for_url(base)
         self.base = _require_safe_transport(base).rstrip("/")
+        # The chain name observed first, pinned for the life of this client so a gateway
+        # cannot switch the signing chain mid-session.
+        self._pinned_chain = self.network.chain_id if self.network else None
 
     def _guard_mainnet(self):
         on_mainnet = self.network is not None and self.network.is_mainnet
@@ -240,12 +243,21 @@ class Client:
                 f"the gateway reports chain {name} but this client is configured for {configured}; "
                 "refusing to sign a transaction that would be valid on a network you did not choose"
             )
+        # Pin the chain name on first sight for the life of this client, so a gateway
+        # that reported one chain cannot quietly switch to another between calls. Only a
+        # fully accepted resolution pins, so a rejected call does not fix the session.
+        if self._pinned_chain is not None and name != self._pinned_chain:
+            raise RuntimeError(
+                f"the gateway reports chain {name} but this session is pinned to {self._pinned_chain}; "
+                "refusing to switch the signing chain mid-session"
+            )
         cid = chain_id_from_name(name)
         if not self.acknowledge_mainnet and _is_mainnet_id(cid):
             raise ValueError(
                 f"the gateway reports the mainnet chain {name}; "
                 "refusing to sign a mainnet transaction without acknowledge_mainnet True"
             )
+        self._pinned_chain = name
         return cid
 
     def _call(self, method, body):
@@ -270,7 +282,28 @@ class Client:
         return self._call("head", "{}")
 
     def account(self, addr):
-        return self._call("get_account", account_body(addr))
+        acct = self._call("get_account", account_body(addr))
+        # The gateway echoes the address it answered for. A lying gateway that returns
+        # another account's nonce is caught here before we ever sign against it.
+        if isinstance(acct, dict) and acct.get("address") not in (None, addr):
+            raise RuntimeError(
+                f"the gateway answered for {acct.get('address')} when asked about {addr}, refusing to trust it"
+            )
+        return acct
+
+    def _checked_nonce(self, reported, expected):
+        nonce = _account_nonce(reported)
+        if expected is not None:
+            if nonce < expected:
+                raise RuntimeError(
+                    f"the gateway reported nonce {nonce} below the expected {expected}; refusing so a "
+                    "replayed lower nonce cannot force a second payment"
+                )
+            if nonce > expected + 16:
+                raise RuntimeError(
+                    f"the gateway reported nonce {nonce} far above the expected {expected}; refusing"
+                )
+        return nonce
 
     def transaction(self, tx_id):
         return self._call("get_transaction", transaction_body(tx_id))
@@ -284,7 +317,11 @@ class Client:
     def address(self, seed_hex, index):
         return address(seed_hex, index)
 
-    def transfer(self, seed_hex, index, to, amount, max_fee):
+    def transfer(self, seed_hex, index, to, amount, max_fee, expected_nonce=None):
+        # A signed transaction has no expiry, so a nonce the gateway invents at a future
+        # value is a standing authorization it can broadcast later for a second payment.
+        # Pass expected_nonce to make the SDK refuse a regression or a large forward jump
+        # rather than blindly signing whatever the gateway reports.
         if not valid_address(to):
             raise ValueError("the recipient is not a Q1 address")
         _check_amount(amount)
@@ -302,7 +339,8 @@ class Client:
         nonce = acct.get("nonce") if isinstance(acct, dict) else None
         if nonce is None:
             raise RuntimeError("the gateway did not report a nonce")
-        signed = _loads(sign_transfer(seed_hex, index, to, int(amount), _account_nonce(nonce), int(fee), chain_id))
+        nonce = self._checked_nonce(nonce, expected_nonce)
+        signed = _loads(sign_transfer(seed_hex, index, to, int(amount), nonce, int(fee), chain_id))
         outcome = self.submit(signed["tx_hex"])
         return signed, outcome
 
