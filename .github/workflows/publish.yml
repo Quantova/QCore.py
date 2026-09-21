@@ -85,6 +85,73 @@ jobs:
           name: wheels-${{ matrix.runner }}-${{ matrix.target }}
           path: QCore.py/dist
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          path: QCore.py
+          persist-credentials: false
+      - name: resolve cross repo pins
+        id: pins
+        shell: bash
+        run: |
+          pin() { awk -v k="$1" '$1==k{print $2}' QCore.py/cross-repo-pins; }
+          for k in QCore.rs Quantova-Chain QVM; do
+            v=$(pin "$k")
+            case "$v" in
+              [0-9a-f]*) : ;;
+              *) echo "cross-repo-pins is missing a commit for $k" >&2; exit 1 ;;
+            esac
+          done
+          lock_qc=$(grep -oE "Q-Crypto\\.git\\?rev=[0-9a-f]+" QCore.py/Cargo.lock | head -1 | sed "s/.*rev=//")
+          pins_qc=$(pin Q-Crypto)
+          if [ -n "$lock_qc" ] && [ "$lock_qc" != "$pins_qc" ]; then
+            echo "cross-repo-pins Q-Crypto $pins_qc disagrees with Cargo.lock $lock_qc" >&2; exit 1
+          fi
+          echo "qcore_rs=$(pin QCore.rs)" >> "$GITHUB_OUTPUT"
+          echo "quantova_chain=$(pin Quantova-Chain)" >> "$GITHUB_OUTPUT"
+          echo "qvm=$(pin QVM)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Quantova/QCore.rs
+          ref: ${{ steps.pins.outputs.qcore_rs }}
+          path: QCore.rs
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Quantova/Quantova-Chain
+          ref: ${{ steps.pins.outputs.quantova_chain }}
+          path: Quantova-Chain
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Quantova/QVM
+          ref: ${{ steps.pins.outputs.qvm }}
+          path: QVM
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.x'
+      - name: build and test the pinned source
+        working-directory: QCore.py
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip maturin
+          maturin develop --release --locked
+          python test_conformance.py
+          python test_payable_conformance.py
+          python test_sign_validate.py
+          python test_fee_cap.py
+          python test_network.py
+          python test_nonce_validate.py
+          python test_payable.py
+          python test_register.py
+          python test_seed_scratch.py
+          python test_slow_read.py
+          python test_transport.py
+
   sdist:
     runs-on: ubuntu-latest
     steps:
@@ -141,7 +208,7 @@ jobs:
           path: QCore.py/dist
 
   publish:
-    needs: [wheels, sdist]
+    needs: [test, wheels, sdist]
     runs-on: ubuntu-latest
     permissions:
       id-token: write

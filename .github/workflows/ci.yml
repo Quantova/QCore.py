@@ -58,3 +58,10 @@ jobs:
           python test_payable_conformance.py
           python test_sign_validate.py
           python test_fee_cap.py
+          python test_network.py
+          python test_nonce_validate.py
+          python test_payable.py
+          python test_register.py
+          python test_seed_scratch.py
+          python test_slow_read.py
+          python test_transport.py
