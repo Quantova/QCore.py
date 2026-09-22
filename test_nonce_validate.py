@@ -81,7 +81,8 @@ def main():
         fail("an honest nonce did not submit exactly once")
 
     state["nonce"] = 0
-    signed, _ = client.transfer(seed, 0, to, "1000", "1000000")
+    fresh = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
+    signed, _ = fresh.transfer(seed, 0, to, "1000", "1000000")
     chain_id = qcore.chain_id_from_name("Q-test-net-1")
     expected = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 310))
     if signed["tx_hex"] != expected["tx_hex"]:
@@ -91,18 +92,26 @@ def main():
         fail("the validity window is not part of what is signed")
 
     held = state["submitted"]
+    state["nonce"] = 7
     for path in (
         lambda: client.call(seed, 0, to, "01", 21000, "1000000", expected_nonce=5),
         lambda: client.register(seed, 0, "1000000", expected_nonce=5),
     ):
         try:
             path()
-            fail("a gateway nonce below the expected one was signed")
+            fail("a gateway nonce above the expected one was signed")
         except RuntimeError as err:
-            if "below the expected" not in str(err):
+            if "above the expected" not in str(err):
                 fail("unclear expected nonce error: " + str(err))
     if state["submitted"] != held:
         fail("a contradicted expected nonce still reached submit")
+    state["nonce"] = 0
+    try:
+        client.call(seed, 0, to, "01", 21000, "1000", expected_nonce=0)
+        fail("a call whose meter fee passes the ceiling was signed")
+    except ValueError as err:
+        if "above the maximum" not in str(err):
+            fail("unclear meter fee error: " + str(err))
     client.call(seed, 0, to, "01", 21000, "1000000", expected_nonce=0)
 
     state["anonymous"] = True
