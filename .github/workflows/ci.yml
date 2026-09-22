@@ -12,33 +12,33 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           path: QCore.py
           persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: Quantova/QCore.rs
-          ref: main
+          ref: 9e1b3499367c7b3365825c507606538cd2d00c2b
           path: QCore.rs
           persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: Quantova/Quantova-Chain
-          ref: main
+          ref: 4681364131c46c33e2c84d5fc501d5acc01b2be8
           path: Quantova-Chain
           persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: Quantova/QVM
-          ref: main
+          ref: 62fadd4ced98c4c4eb5042391aba54dabac51431
           path: QVM
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: stable
           components: rustfmt, clippy
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.x'
       - name: fmt
