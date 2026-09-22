@@ -114,6 +114,21 @@ def main():
             fail("unclear meter fee error: " + str(err))
     client.call(seed, 0, to, "01", 21000, "1000000", expected_nonce=0)
 
+    stuck = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
+    state["nonce"] = 3
+    stuck.transfer(seed, 0, to, "1000", "1000000")
+    signed, _ = stuck.transfer(seed, 0, to, "1000", "1000000")
+    again = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 3, 500, chain_id, 310))
+    if signed["tx_hex"] != again["tx_hex"]:
+        fail("a submission that never landed pushed the next one past the nonce the chain admits")
+    state["nonce"] = 9
+    try:
+        stuck.transfer(seed, 0, to, "1000", "1000000")
+        fail("a gateway nonce above the local one was signed")
+    except RuntimeError as err:
+        if "above the expected" not in str(err):
+            fail("unclear local nonce error: " + str(err))
+
     state["anonymous"] = True
     try:
         client.account(to)

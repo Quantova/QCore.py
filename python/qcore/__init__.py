@@ -320,7 +320,7 @@ class Client:
                 f"the gateway reported nonce {nonce} above the expected {want}; refusing so a "
                 "signature cannot be banked for a nonce the account has not reached"
             )
-        return want
+        return want if expected is not None else nonce
 
     def _remember(self, key, used, outcome):
         if isinstance(outcome, dict) and outcome.get("verdict") == "accepted":
