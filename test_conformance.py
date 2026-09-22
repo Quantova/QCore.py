@@ -80,7 +80,7 @@ def transaction_vector():
 
     signed = json.loads(qcore.sign_call(
         v["master_seed"], v["sender_index"], target, v["args"], v["nonce"], v["meter_limit"], v["fee"],
-        qcore.local_chain_id()))
+        qcore.local_chain_id(), 0))
     check("the signer address is the vector sender", bech32_equal(signed["from"], v["sender"]), True)
 
     want = parse_body(v["body_bytes"])
@@ -102,7 +102,7 @@ def transaction_vector():
 
     again = json.loads(qcore.sign_call(
         v["master_seed"], v["sender_index"], target, v["args"], v["nonce"], v["meter_limit"], v["fee"],
-        qcore.local_chain_id()))
+        qcore.local_chain_id(), 0))
     check("signing is deterministic", again["tx_hex"] == signed["tx_hex"], True)
     check("the transaction id matches the vector", bech32_equal(signed["tx_id"], v["tx_id"]), True)
     check("the transaction id is a qtx identifier",

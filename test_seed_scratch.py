@@ -17,8 +17,8 @@ def main():
     address = qcore.address(seed, 0)
     assert address.startswith("Q1"), "the seed decodes through the zeroizing scratch to an address"
 
-    first = qcore.sign_transfer(seed, 0, address, 1000, 3, 500, chain)
-    second = qcore.sign_transfer(seed, 0, address, 1000, 3, 500, chain)
+    first = qcore.sign_transfer(seed, 0, address, 1000, 3, 500, chain, 0)
+    second = qcore.sign_transfer(seed, 0, address, 1000, 3, 500, chain, 0)
     assert first == second, "signing stays deterministic after the seed routes through wiped scratch"
 
     for bad in ("00", "ab" * 33, "zz" * 32):

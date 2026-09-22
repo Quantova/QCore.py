@@ -29,27 +29,27 @@ def main():
     seed = "0b" * 32
     target = qcore.address(seed, 1)
 
-    plain = json.loads(qcore.sign_call(seed, 0, target, "", 3, 21000, 500, LOCAL_CHAIN_ID))
-    payable = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, LOCAL_CHAIN_ID))
+    plain = json.loads(qcore.sign_call(seed, 0, target, "", 3, 21000, 500, LOCAL_CHAIN_ID, 0))
+    payable = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, LOCAL_CHAIN_ID, 0))
     ok("a payable call with no value on the local chain matches a plain call",
        payable["tx_hex"] == plain["tx_hex"])
     ok("a payable call with no value on the local chain matches a plain call's id",
        payable["tx_id"] == plain["tx_id"])
 
-    unpaid = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, LOCAL_CHAIN_ID))
-    paid = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 4200, LOCAL_CHAIN_ID))
+    unpaid = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, LOCAL_CHAIN_ID, 0))
+    paid = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 4200, LOCAL_CHAIN_ID, 0))
     ok("a nonzero value changes the signed bytes", unpaid["tx_hex"] != paid["tx_hex"])
     ok("a nonzero value changes the transaction id", unpaid["tx_id"] != paid["tx_id"])
 
-    on_local = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, LOCAL_CHAIN_ID))
-    on_mainnet = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, MAINNET_CHAIN_ID))
-    on_testnet = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, TESTNET_CHAIN_ID))
+    on_local = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, LOCAL_CHAIN_ID, 0))
+    on_mainnet = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, MAINNET_CHAIN_ID, 0))
+    on_testnet = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 0, TESTNET_CHAIN_ID, 0))
     ok("a different chain id changes the signed bytes", on_local["tx_hex"] != on_mainnet["tx_hex"])
     ok("mainnet and testnet chain ids sign to different bytes", on_mainnet["tx_hex"] != on_testnet["tx_hex"])
     ok("a different chain id changes the transaction id", on_local["tx_id"] != on_mainnet["tx_id"])
 
-    upper = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 10, TESTNET_CHAIN_ID))
-    lower = json.loads(qcore.sign_payable_call(seed, 0, target.lower(), "", 3, 21000, 500, 10, TESTNET_CHAIN_ID))
+    upper = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 500, 10, TESTNET_CHAIN_ID, 0))
+    lower = json.loads(qcore.sign_payable_call(seed, 0, target.lower(), "", 3, 21000, 500, 10, TESTNET_CHAIN_ID, 0))
     ok("the target address case never changes the signed bytes", upper["tx_hex"] == lower["tx_hex"])
     ok("the target address case never changes the transaction id", upper["tx_id"] == lower["tx_id"])
     ok("the from field renders as an uppercase Q1 address", upper["from"].startswith("Q1"))
@@ -57,7 +57,7 @@ def main():
     for bad in ("not an address", "", "Q1zzzz", target[:-1] + ("q" if target[-1] != "q" else "p")):
         threw = False
         try:
-            qcore.sign_payable_call(seed, 0, bad, "", 3, 21000, 500, 0, LOCAL_CHAIN_ID)
+            qcore.sign_payable_call(seed, 0, bad, "", 3, 21000, 500, 0, LOCAL_CHAIN_ID, 0)
         except ValueError:
             threw = True
         ok(f"a malformed target is refused: {bad!r}", threw)

@@ -111,8 +111,6 @@ version = "0.1.4"
 dependencies = [
  "pyo3",
  "qcore",
- "qtv-account",
- "qtv-codec",
  "qtv-tx",
  "qtv-wipe",
 ]

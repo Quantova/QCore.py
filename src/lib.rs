@@ -3,6 +3,7 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyString;
 use qtv_wipe::{Zeroize, Zeroizing};
 
 fn seed(seed_hex: &str) -> PyResult<Zeroizing<[u8; 32]>> {
@@ -28,14 +29,16 @@ fn valid_address(address: &str) -> bool {
 }
 
 #[pyfunction]
-fn mnemonic_from_seed(seed_hex: &str) -> PyResult<String> {
-    Ok(qcore::mnemonic_from_seed(&*seed(seed_hex)?))
+fn mnemonic_from_seed<'py>(py: Python<'py>, seed_hex: &str) -> PyResult<Bound<'py, PyString>> {
+    let phrase = Zeroizing::new(qcore::mnemonic_from_seed(&*seed(seed_hex)?));
+    Ok(PyString::new(py, &phrase))
 }
 
 #[pyfunction]
-fn seed_from_mnemonic(phrase: &str) -> PyResult<String> {
+fn seed_from_mnemonic<'py>(py: Python<'py>, phrase: &str) -> PyResult<Bound<'py, PyString>> {
     let seed = qcore::seed_from_mnemonic(phrase).map_err(PyValueError::new_err)?;
-    Ok(qcore::json::to_hex(&seed[..]))
+    let hex = Zeroizing::new(qcore::json::to_hex(&seed[..]));
+    Ok(PyString::new(py, &hex))
 }
 
 #[pyfunction]
@@ -48,12 +51,22 @@ fn sign_transfer(
     nonce: u64,
     fee: u128,
     chain_id: u64,
+    valid_until: u64,
 ) -> PyResult<String> {
     if !qcore::valid_address(to) {
         return Err(PyValueError::new_err("the recipient is not a Q1 address"));
     }
-    let signed = qcore::sign_transfer(&*seed(seed_hex)?, index, to, amount, nonce, fee, chain_id)
-        .map_err(PyValueError::new_err)?;
+    let signed = qcore::sign_transfer(
+        &*seed(seed_hex)?,
+        index,
+        to,
+        amount,
+        nonce,
+        fee,
+        chain_id,
+        valid_until,
+    )
+    .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
         ("tx_id", qcore::json::Json::str(signed.tx_id)),
@@ -76,6 +89,7 @@ fn sign_call(
     meter_limit: u64,
     fee: u128,
     chain_id: u64,
+    valid_until: u64,
 ) -> PyResult<String> {
     if !qcore::valid_address(target) {
         return Err(PyValueError::new_err("the target is not a Q1 address"));
@@ -90,6 +104,7 @@ fn sign_call(
         meter_limit,
         fee,
         chain_id,
+        valid_until,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -115,30 +130,31 @@ fn sign_payable_call(
     fee: u128,
     value: u64,
     chain_id: u64,
+    valid_until: u64,
 ) -> PyResult<String> {
     if !qcore::valid_address(target) {
         return Err(PyValueError::new_err("the target is not a Q1 address"));
     }
     let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
-    let sender = qtv_account::derive(&*seed(seed_hex)?, index);
-    let call = qtv_tx::Call::new(target.to_string(), args);
-    let body = qtv_tx::Body::with_context(
-        sender.address(),
+    let signed = qcore::sign_payable_call(
+        &*seed(seed_hex)?,
+        index,
+        target,
+        args,
+        value,
         nonce,
         meter_limit,
         fee,
-        call,
-        value,
         chain_id,
-    );
-    let wrapper = qtv_tx::sign(&sender, &body);
-    let tx_bytes = qtv_codec::to_bytes(&wrapper);
+        valid_until,
+    )
+    .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
-        ("from", qcore::json::Json::str(sender.address())),
-        ("tx_id", qcore::json::Json::str(wrapper.id())),
+        ("from", qcore::json::Json::str(signed.from)),
+        ("tx_id", qcore::json::Json::str(signed.tx_id)),
         (
             "tx_hex",
-            qcore::json::Json::str(qcore::json::to_hex(&tx_bytes)),
+            qcore::json::Json::str(qcore::json::to_hex(&signed.tx_bytes)),
         ),
     ])
     .render())
@@ -151,8 +167,9 @@ fn sign_register(
     nonce: u64,
     fee: u128,
     chain_id: u64,
+    valid_until: u64,
 ) -> PyResult<String> {
-    let signed = qcore::sign_register(&*seed(seed_hex)?, index, nonce, fee, chain_id)
+    let signed = qcore::sign_register(&*seed(seed_hex)?, index, nonce, fee, chain_id, valid_until)
         .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),

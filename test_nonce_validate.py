@@ -35,7 +35,10 @@ class Handler(BaseHTTPRequestHandler):
             send({"chain_id": "Q-test-net-1", "head_height": 10, "denomination": "Quon",
                   "fee": {"transfer_quon": "500", "quon_per_qtov": "1000000"}, "version": "test"})
         elif self.path == "/v1/get_account":
-            send({"address": body["address"], "nonce": state["nonce"], "balance": "0", "scheme": 1, "has_key": True})
+            reply = {"nonce": state["nonce"], "balance": "0", "scheme": 1, "has_key": True}
+            if not state.get("anonymous"):
+                reply["address"] = body["address"]
+            send(reply)
         elif self.path == "/v1/submit_transaction":
             state["submitted"] += 1
             send({"verdict": "accepted", "state": "fresh", "tx_id": "Qtxabc"})
@@ -76,6 +79,39 @@ def main():
     client.transfer(seed, 0, to, "1000", "1000000")
     if state["submitted"] != 1:
         fail("an honest nonce did not submit exactly once")
+
+    state["nonce"] = 0
+    signed, _ = client.transfer(seed, 0, to, "1000", "1000000")
+    chain_id = qcore.chain_id_from_name("Q-test-net-1")
+    expected = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 310))
+    if signed["tx_hex"] != expected["tx_hex"]:
+        fail("a client transfer did not expire 300 blocks past the head")
+    unbounded = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 0))
+    if unbounded["tx_hex"] == expected["tx_hex"]:
+        fail("the validity window is not part of what is signed")
+
+    held = state["submitted"]
+    for path in (
+        lambda: client.call(seed, 0, to, "01", 21000, "1000000", expected_nonce=5),
+        lambda: client.register(seed, 0, "1000000", expected_nonce=5),
+    ):
+        try:
+            path()
+            fail("a gateway nonce below the expected one was signed")
+        except RuntimeError as err:
+            if "below the expected" not in str(err):
+                fail("unclear expected nonce error: " + str(err))
+    if state["submitted"] != held:
+        fail("a contradicted expected nonce still reached submit")
+    client.call(seed, 0, to, "01", 21000, "1000000", expected_nonce=0)
+
+    state["anonymous"] = True
+    try:
+        client.account(to)
+        fail("an account reply naming no address was trusted")
+    except RuntimeError:
+        pass
+    state["anonymous"] = False
 
     print("ok nonce validate")
 
