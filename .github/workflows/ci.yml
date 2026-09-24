@@ -65,3 +65,8 @@ jobs:
           python test_seed_scratch.py
           python test_slow_read.py
           python test_transport.py
+      - name: deny
+        working-directory: QCore.py
+        run: |
+          cargo install --locked cargo-deny --version 0.16.4
+          cargo deny check bans licenses sources advisories
