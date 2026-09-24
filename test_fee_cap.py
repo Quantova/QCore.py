@@ -13,7 +13,7 @@ except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
     import qcore
 
-state = {"fee": "100", "submitted": 0, "fee_bad": False}
+state = {"fee": "100", "submitted": 0, "fee_bad": False, "nonce": 0}
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -36,9 +36,10 @@ class Handler(BaseHTTPRequestHandler):
             send({"chain_id": "Q-test-net-1", "head_height": 10, "denomination": "Quon",
                   "fee": fee_field, "version": "test"})
         elif self.path == "/v1/get_account":
-            send({"address": body["address"], "nonce": 0, "balance": "0", "scheme": 1, "has_key": True})
+            send({"address": body["address"], "nonce": state["nonce"], "balance": "0", "scheme": 1, "has_key": True})
         elif self.path == "/v1/submit_transaction":
             state["submitted"] += 1
+            state["nonce"] += 1
             send({"verdict": "accepted", "state": "fresh", "tx_id": "Qtxabc"})
         else:
             send({"error": "unknown_method", "message": self.path}, 404)

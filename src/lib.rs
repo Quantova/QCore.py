@@ -30,7 +30,7 @@ fn valid_address(address: &str) -> bool {
 
 #[pyfunction]
 fn mnemonic_from_seed<'py>(py: Python<'py>, seed_hex: &str) -> PyResult<Bound<'py, PyString>> {
-    let phrase = Zeroizing::new(qcore::mnemonic_from_seed(&*seed(seed_hex)?));
+    let phrase = qcore::mnemonic_from_seed(&*seed(seed_hex)?);
     Ok(PyString::new(py, &phrase))
 }
 

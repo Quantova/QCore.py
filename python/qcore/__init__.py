@@ -241,6 +241,7 @@ class Client:
         self._pinned_chain = self.network.chain_id if self.network else None
         self._head_floor = None
         self._next_nonces = {}
+        self._signed_nonces = {}
 
     def _guard_mainnet(self):
         on_mainnet = self.network is not None and self.network.is_mainnet
@@ -321,6 +322,18 @@ class Client:
             )
         return want if expected is not None else nonce
 
+    def _guard_signed(self, key, slot, tx_hex):
+        if key is None:
+            return
+        held = self._signed_nonces.setdefault(key, {})
+        seen = held.get(slot)
+        if seen is not None and seen != tx_hex:
+            raise RuntimeError(
+                f"a different transaction was already signed for nonce {slot} in this "
+                "session; one nonce carries one signature"
+            )
+        held[slot] = tx_hex
+
     def _remember(self, key, used, outcome):
         if isinstance(outcome, dict) and outcome.get("verdict") == "accepted":
             self._next_nonces[key] = used + 1
@@ -378,6 +391,7 @@ class Client:
         signed = _loads(
             sign_transfer(seed_hex, index, to, int(amount), nonce, int(fee), chain_id, self._validity(info))
         )
+        self._guard_signed(sender, nonce, signed["tx_hex"])
         outcome = self.submit(signed["tx_hex"])
         self._remember(sender, nonce, outcome)
         return signed, outcome
@@ -399,6 +413,7 @@ class Client:
             raise RuntimeError("the gateway did not report a nonce")
         nonce = self._checked_nonce(nonce, expected_nonce, sender)
         signed = _loads(sign_register(seed_hex, index, nonce, int(fee), chain_id, self._validity(info)))
+        self._guard_signed(sender, nonce, signed["tx_hex"])
         outcome = self.submit(signed["tx_hex"])
         self._remember(sender, nonce, outcome)
         return signed, outcome
@@ -427,6 +442,7 @@ class Client:
                 self._validity(info),
             )
         )
+        self._guard_signed(sender, nonce, signed["tx_hex"])
         outcome = self.submit(signed["tx_hex"])
         self._remember(sender, nonce, outcome)
         return signed, outcome
