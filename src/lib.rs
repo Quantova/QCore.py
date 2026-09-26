@@ -90,6 +90,7 @@ fn sign_call(
     fee: u128,
     chain_id: u64,
     valid_until: u64,
+    transfer_fee: u128,
 ) -> PyResult<String> {
     if !qcore::valid_address(target) {
         return Err(PyValueError::new_err("the target is not a Q1 address"));
@@ -105,6 +106,7 @@ fn sign_call(
         fee,
         chain_id,
         valid_until,
+        transfer_fee,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -131,6 +133,7 @@ fn sign_payable_call(
     value: u64,
     chain_id: u64,
     valid_until: u64,
+    transfer_fee: u128,
 ) -> PyResult<String> {
     if !qcore::valid_address(target) {
         return Err(PyValueError::new_err("the target is not a Q1 address"));
@@ -147,6 +150,7 @@ fn sign_payable_call(
         fee,
         chain_id,
         valid_until,
+        transfer_fee,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -183,23 +187,33 @@ fn sign_register(
 }
 
 #[pyfunction]
+fn vm_call_fee(transfer_fee: u128, meter_limit: u64) -> u128 {
+    qcore::vm_call_fee(transfer_fee, meter_limit)
+}
+
+#[pyfunction]
+fn check_valid_until(valid_until: u64, head: u64) -> PyResult<()> {
+    qcore::check_valid_until(valid_until, head).map_err(PyValueError::new_err)
+}
+
+#[pyfunction]
 fn chain_id_from_name(name: &str) -> u64 {
-    qtv_tx::chain_id_from_name(name)
+    qcore::chain_id_from_name(name)
 }
 
 #[pyfunction]
 fn local_chain_id() -> u64 {
-    qtv_tx::LOCAL_CHAIN_ID
+    qcore::LOCAL_CHAIN_ID
 }
 
 #[pyfunction]
 fn testnet_chain_id() -> u64 {
-    qtv_tx::TESTNET_CHAIN_ID
+    qcore::testnet_chain_id()
 }
 
 #[pyfunction]
 fn mainnet_chain_id() -> u64 {
-    qtv_tx::MAINNET_CHAIN_ID
+    qcore::MAINNET_CHAIN_ID
 }
 
 #[pyfunction]
@@ -326,6 +340,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign_payable_call, m)?)?;
     m.add_function(wrap_pyfunction!(sign_register, m)?)?;
     m.add_function(wrap_pyfunction!(build_typed_order_call, m)?)?;
+    m.add_function(wrap_pyfunction!(vm_call_fee, m)?)?;
+    m.add_function(wrap_pyfunction!(check_valid_until, m)?)?;
     m.add_function(wrap_pyfunction!(chain_id_from_name, m)?)?;
     m.add_function(wrap_pyfunction!(local_chain_id, m)?)?;
     m.add_function(wrap_pyfunction!(testnet_chain_id, m)?)?;

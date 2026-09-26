@@ -66,11 +66,23 @@ def main():
     plain = Client("https://gateway.example")
     throws("a plain url client refuses the reported mainnet chain without acknowledgement",
            lambda: plain._signing_chain_id({"chain_id": "Q-main-net-1"}))
-    ok("a plain url client still binds a testnet chain the gateway reports",
-       plain._signing_chain_id({"chain_id": "Q-test-net-1"}) is not None)
+    throws("a plain url client refuses any Q-main-net- chain without acknowledgement",
+           lambda: plain._signing_chain_id({"chain_id": "Q-main-net-2"}))
+    throws("a plain url client refuses a public testnet until the network is configured",
+           lambda: plain._signing_chain_id({"chain_id": "Q-test-net-1"}))
+    ok("a plain url client still binds a private dev chain the gateway reports",
+       plain._signing_chain_id({"chain_id": "Q-dev-net-1"}) is not None)
     plain_acked = Client("https://gateway.example", acknowledge_mainnet=True)
+    throws("acknowledging mainnet does not open a public testnet to a plain url client",
+           lambda: plain_acked._signing_chain_id({"chain_id": "Q-test-net-3"}))
     ok("an acknowledged plain url client binds the reported mainnet chain",
        plain_acked._signing_chain_id({"chain_id": "Q-main-net-1"}) is not None)
+    ok("a client configured for the testnet binds it",
+       Client(testnet)._signing_chain_id({"chain_id": "Q-test-net-3"}) == qcore.testnet_chain_id())
+    next_mainnet = Client("https://rpc.quantova.org", network=Network(
+        name="next", chain_id="Q-main-net-2", rpc_url="https://rpc.quantova.org", is_mainnet=False))
+    throws("a configured Q-main-net- chain needs acknowledgement even with the flag off",
+           lambda: next_mainnet._signing_chain_id({"chain_id": "Q-main-net-2"}))
 
     inconsistent = Client("https://rpc.quantova.org", network=Network(
         name="custom", chain_id="Q-main-net-1", rpc_url="https://rpc.quantova.org", is_mainnet=False))
@@ -83,11 +95,11 @@ def main():
 
     pinning = Client("https://gateway.example")
     ok("the first chain resolves and pins",
-       pinning._signing_chain_id({"chain_id": "Q-test-net-1"}) is not None)
+       pinning._signing_chain_id({"chain_id": "Q-dev-net-1"}) is not None)
     throws("a switched chain mid-session is refused",
-           lambda: pinning._signing_chain_id({"chain_id": "Q-test-net-9"}))
+           lambda: pinning._signing_chain_id({"chain_id": "Q-dev-net-9"}))
     ok("the pinned chain still resolves",
-       pinning._signing_chain_id({"chain_id": "Q-test-net-1"}) is not None)
+       pinning._signing_chain_id({"chain_id": "Q-dev-net-1"}) is not None)
 
     if failures > 0:
         print("\nnetwork: " + str(failures) + " checks failed")

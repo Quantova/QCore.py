@@ -33,7 +33,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/node_info":
             fee_field = "not a dict" if state["fee_bad"] else {"transfer_quon": state["fee"], "quon_per_qtov": "1000000"}
-            send({"chain_id": "Q-test-net-1", "head_height": 10, "denomination": "Quon",
+            send({"chain_id": "Q-dev-net-1", "head_height": 10, "denomination": "Quon",
                   "fee": fee_field, "version": "test"})
         elif self.path == "/v1/get_account":
             send({"address": body["address"], "nonce": state["nonce"], "balance": "0", "scheme": 1, "has_key": True})

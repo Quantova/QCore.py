@@ -33,12 +33,16 @@ seed = qcore.generate_seed()             # thirty two random bytes as hex from t
 phrase = qcore.mnemonic_from_seed(seed)  # the only backup, shown once and kept on the device
 ```
 
+`qcore.seed_from_mnemonic(phrase)` restores the seed from the twenty four words. It ignores case and extra spacing and applies Unicode NFKD before it looks a word up, so a phrase pasted with capitals, non breaking spaces, or full width letters restores the same seed. A standard BIP-39 phrase from another wallet is refused with its own error, since a Quantova phrase carries a SHA3 checksum and cannot be restored from it.
+
 ## Using it
+
+A Client opened for a plain url with no network signs only for a private chain. It refuses the public testnet and any `Q-main-net-` chain until you name the network, with `Network.testnet()` or a mainnet network and `acknowledge_mainnet=True`. An expected nonce you pass must be the nonce the gateway reports, because the chain admits only the next nonce of an account. A rejected submission, or one whose validity deadline has passed, frees its nonce for the next send.
 
 ```python
 import qcore
 
-client = qcore.Client("https://rpc-testnet.quantova.org")
+client = qcore.Client(qcore.Network.testnet())
 seed = qcore.generate_seed()
 me = client.address(seed, 0)
 to = client.address(seed, 1)
@@ -69,19 +73,21 @@ status = client.transaction(signed["tx_id"])
 
 ## Sending a payable call
 
-A call to a contract can carry a value in Quon alongside its arguments, and every payable call must name the chain it signs for so the signature can never be replayed onto another network. This is the one raw signer that asks for the chain id itself, so read it from the node you mean to reach rather than assuming one.
+A call to a contract can carry a value in Quon alongside its arguments, and every payable call must name the chain it signs for so the signature can never be replayed onto another network. Read the chain id from the node you mean to reach rather than assuming one. The nonce comes from the account. The validity deadline is the height after which the chain drops the transaction, and a deadline of zero, which would never expire, is refused. A call pays one transfer fee for every started 1210 units of its meter limit, so the raw call signers take the transfer fee the node reports and refuse a fee below `vm_call_fee(transfer_fee, meter_limit)`, a meter limit outside 1210 to 12500000, or call arguments above 128 KiB.
 
 ```python
 import qcore
 
+client = qcore.Client(qcore.Network.testnet())
 seed = qcore.generate_seed()
 target = qcore.address(seed, 1)
+info = client.node_info()
+transfer_fee = int(info["fee"]["transfer_quon"])
 
-# The nonce and the fee come from the account and the node the same way they do
-# for sign_call, and the last two arguments are the value the call carries in
-# Quon and the chain id the signature is bound to.
 signed = qcore.sign_payable_call(seed, 0, target, "", nonce=3, meter_limit=21000,
-                                  fee=1000000, value=2500000, chain_id=qcore.testnet_chain_id())
+                                  fee=qcore.vm_call_fee(transfer_fee, 21000), value=2500000,
+                                  chain_id=qcore.testnet_chain_id(),
+                                  valid_until=info["head_height"] + 300, transfer_fee=transfer_fee)
 ```
 
 ## Building

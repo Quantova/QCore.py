@@ -61,6 +61,19 @@ def parse_body(hexstr):
             "target": target, "args": args, "value": value, "chain_id": chain_id,
             "length": r.at}
 
+def with_deadline(body_hex, valid_until):
+    at = len(body_hex) - 18
+    return body_hex[:at] + valid_until.to_bytes(8, "little").hex() + body_hex[at + 16:]
+
+
+def refused(fn):
+    try:
+        fn()
+    except ValueError:
+        return True
+    return False
+
+
 def address_vector():
     print("address.derivation")
     v = load("address.derivation.json")
@@ -78,9 +91,14 @@ def transaction_vector():
     check("sender derives to the vector sender", bech32_equal(sender, v["sender"]), True)
     check("target derives to the vector target", bech32_equal(target, v["target"]), True)
 
+    b = v["bounded"]
+    check("the never expiring deadline the frozen vector was signed at is refused", refused(
+        lambda: qcore.sign_call(
+            v["master_seed"], v["sender_index"], target, v["args"], v["nonce"], v["meter_limit"], v["fee"],
+            qcore.local_chain_id(), 0, int(b["transfer_fee"]))), True)
     signed = json.loads(qcore.sign_call(
         v["master_seed"], v["sender_index"], target, v["args"], v["nonce"], v["meter_limit"], v["fee"],
-        qcore.local_chain_id(), 0))
+        qcore.local_chain_id(), b["valid_until"], int(b["transfer_fee"])))
     check("the signer address is the vector sender", bech32_equal(signed["from"], v["sender"]), True)
 
     want = parse_body(v["body_bytes"])
@@ -100,11 +118,15 @@ def transaction_vector():
     check("an unset chain id defaults to the local chain", got["chain_id"] == qcore.local_chain_id(), True)
     check("body length matches the vector", got["length"] == want["length"], True)
 
+    check("the body is the frozen body with only its deadline moved",
+          signed["tx_hex"].startswith(with_deadline(v["body_bytes"], b["valid_until"])), True)
+
     again = json.loads(qcore.sign_call(
         v["master_seed"], v["sender_index"], target, v["args"], v["nonce"], v["meter_limit"], v["fee"],
-        qcore.local_chain_id(), 0))
+        qcore.local_chain_id(), b["valid_until"], int(b["transfer_fee"])))
     check("signing is deterministic", again["tx_hex"] == signed["tx_hex"], True)
-    check("the transaction id matches the vector", bech32_equal(signed["tx_id"], v["tx_id"]), True)
+    check("the transaction id matches the bounded vector", bech32_equal(signed["tx_id"], b["tx_id"]), True)
+    check("the signed bytes match the bounded vector byte for byte", signed["tx_hex"], b["tx_hex"])
     check("the transaction id is a qtx identifier",
           bool(re.match(r"^qtx1[0-9a-z]+$", signed["tx_id"], re.IGNORECASE)), True)
 
