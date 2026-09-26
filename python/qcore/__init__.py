@@ -14,6 +14,8 @@ import urllib.request
 from ._native import (
     address,
     valid_address,
+    same_address,
+    lookalike_of,
     mnemonic_from_seed,
     seed_from_mnemonic,
     sign_transfer,
@@ -48,6 +50,8 @@ __all__ = [
     "generate_seed",
     "address",
     "valid_address",
+    "same_address",
+    "lookalike_of",
     "mnemonic_from_seed",
     "seed_from_mnemonic",
     "sign_transfer",
@@ -200,7 +204,7 @@ class Network:
 
     @classmethod
     def testnet(cls):
-        return cls(name="testnet", chain_id="Q-test-net-3",
+        return cls(name="testnet", chain_id="Q-test-net-1",
                    rpc_url="https://rpc-testnet.quantova.org",
                    explorer_url="https://qvmscan.io", is_mainnet=False)
 

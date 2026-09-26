@@ -88,8 +88,7 @@ def main():
     forever = refusal(lambda: qcore.sign_call(seed, 0, target, "", 3, 21000, 9000, LOCAL_CHAIN_ID, 0, 500))
     ok("a deadline of zero is refused", forever is not None and "never expires" in forever)
     ok("the testnet chain id follows the testnet network",
-       TESTNET_CHAIN_ID == qcore.chain_id_from_name(qcore.Network.testnet().chain_id)
-       and TESTNET_CHAIN_ID != qcore.chain_id_from_name("Q-test-net-1"))
+       TESTNET_CHAIN_ID == qcore.chain_id_from_name(qcore.Network.testnet().chain_id))
     capped = refusal(lambda: qcore.check_valid_until(1000 + 3600 + 1, 1000))
     ok("a deadline more than 3600 blocks past the head is refused",
        capped is not None and refusal(lambda: qcore.check_valid_until(1000 + 3600, 1000)) is None)

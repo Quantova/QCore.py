@@ -32,7 +32,7 @@ def throws(label, fn):
 
 def main():
     testnet = Network.testnet()
-    ok("testnet chain id", testnet.chain_id == "Q-test-net-3")
+    ok("testnet chain id", testnet.chain_id == "Q-test-net-1")
     ok("testnet rpc url", testnet.rpc_url == "https://rpc-testnet.quantova.org")
     ok("testnet denomination", testnet.denomination == "Quon")
     ok("testnet decimals are six", testnet.decimals == 6)
@@ -41,7 +41,7 @@ def main():
     ok("mainnet rpc is not the testnet url", Network.mainnet().rpc_url != testnet.rpc_url)
 
     client = Client(testnet)
-    ok("testnet client carries its network", client.network.chain_id == "Q-test-net-3")
+    ok("testnet client carries its network", client.network.chain_id == "Q-test-net-1")
 
     live_mainnet = Network(name="mainnet", chain_id="Q-main-net-1",
                            rpc_url="https://rpc.quantova.org", is_mainnet=True)
@@ -74,11 +74,11 @@ def main():
        plain._signing_chain_id({"chain_id": "Q-dev-net-1"}) is not None)
     plain_acked = Client("https://gateway.example", acknowledge_mainnet=True)
     throws("acknowledging mainnet does not open a public testnet to a plain url client",
-           lambda: plain_acked._signing_chain_id({"chain_id": "Q-test-net-3"}))
+           lambda: plain_acked._signing_chain_id({"chain_id": "Q-test-net-1"}))
     ok("an acknowledged plain url client binds the reported mainnet chain",
        plain_acked._signing_chain_id({"chain_id": "Q-main-net-1"}) is not None)
     ok("a client configured for the testnet binds it",
-       Client(testnet)._signing_chain_id({"chain_id": "Q-test-net-3"}) == qcore.testnet_chain_id())
+       Client(testnet)._signing_chain_id({"chain_id": "Q-test-net-1"}) == qcore.testnet_chain_id())
     next_mainnet = Client("https://rpc.quantova.org", network=Network(
         name="next", chain_id="Q-main-net-2", rpc_url="https://rpc.quantova.org", is_mainnet=False))
     throws("a configured Q-main-net- chain needs acknowledgement even with the flag off",

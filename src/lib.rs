@@ -29,6 +29,16 @@ fn valid_address(address: &str) -> bool {
 }
 
 #[pyfunction]
+fn same_address(a: &str, b: &str) -> bool {
+    qcore::same_address(a, b)
+}
+
+#[pyfunction]
+fn lookalike_of(candidate: &str, known: Vec<String>) -> Option<String> {
+    qcore::lookalike_of(candidate, &known)
+}
+
+#[pyfunction]
 fn mnemonic_from_seed<'py>(py: Python<'py>, seed_hex: &str) -> PyResult<Bound<'py, PyString>> {
     let phrase = qcore::mnemonic_from_seed(&*seed(seed_hex)?);
     Ok(PyString::new(py, &phrase))
@@ -333,6 +343,8 @@ fn build_typed_order_call(
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(address, m)?)?;
     m.add_function(wrap_pyfunction!(valid_address, m)?)?;
+    m.add_function(wrap_pyfunction!(same_address, m)?)?;
+    m.add_function(wrap_pyfunction!(lookalike_of, m)?)?;
     m.add_function(wrap_pyfunction!(mnemonic_from_seed, m)?)?;
     m.add_function(wrap_pyfunction!(seed_from_mnemonic, m)?)?;
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;
