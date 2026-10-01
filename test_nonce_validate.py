@@ -145,16 +145,13 @@ def main():
     if outcome["verdict"] != "rejected":
         fail("the stub gateway should reject this send")
     state["verdict"] = "accepted"
-    _, outcome = retry.transfer(seed, 0, to, "2", "1000000")
-    if outcome["verdict"] != "accepted":
-        fail("a rejected send did not free its nonce for the next one")
     try:
-        retry.transfer(seed, 0, to, "3", "1000000")
-        fail("an accepted send that has not expired did not hold its nonce")
+        retry.transfer(seed, 0, to, "2", "1000000")
+        fail("a gateway rejection must not free a signed nonce on its own")
     except RuntimeError as err:
         if "already signed" not in str(err):
             fail("unclear held nonce error: " + str(err))
-    _, outcome = retry.transfer(seed, 0, to, "3", "1000000", expected_nonce=3)
+    _, outcome = retry.transfer(seed, 0, to, "2", "1000000", expected_nonce=3)
     if outcome["verdict"] != "accepted":
         fail("naming the nonce explicitly did not override the hold")
     retry._validity({"head_height": 250})

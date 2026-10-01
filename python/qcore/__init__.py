@@ -363,8 +363,6 @@ class Client:
             local = self._next_nonces.get(key)
             if local is None or local < used + 1:
                 self._next_nonces[key] = used + 1
-        elif verdict == "rejected":
-            self._signed_nonces.get(key, {}).pop(used, None)
 
     def _validity(self, info):
         until = _valid_until(info)
