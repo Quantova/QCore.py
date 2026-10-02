@@ -159,6 +159,7 @@ _VALIDITY_BLOCKS = 300
 _MAX_PLAUSIBLE_HEAD = 1 << 40
 _HEAD_BLOCKS_PER_SEC = 4
 _HEAD_SLACK_SECS = 60
+_GENESIS_FLOOR_SECS = 1735689600
 
 def _valid_until(info):
     head = info.get("head_height") if isinstance(info, dict) else None
@@ -368,6 +369,13 @@ class Client:
         until = _valid_until(info)
         head = until - _VALIDITY_BLOCKS
         now = time.monotonic()
+        wall = time.time()
+        if wall > _GENESIS_FLOOR_SECS:
+            max_head = (int(wall - _GENESIS_FLOOR_SECS) + _HEAD_SLACK_SECS) * _HEAD_BLOCKS_PER_SEC
+            if head > max_head:
+                raise RuntimeError(
+                    f"the gateway reports head {head} further ahead than wall-clock time allows, refusing to sign"
+                )
         if self._head_floor is not None:
             floor, at = self._head_floor
             if head < floor:
