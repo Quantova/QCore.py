@@ -36,7 +36,7 @@ from ._native import (
 )
 
 def generate_seed():
-    return secrets.token_bytes(32).hex()
+    return bytearray(secrets.token_bytes(32))
 
 def _is_mainnet_chain(name):
     return name.startswith("Q-main-net-")

@@ -3,24 +3,23 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyString;
-use qtv_wipe::{Zeroize, Zeroizing};
+use pyo3::types::{PyBytes, PyString};
+use qtv_wipe::Zeroizing;
 
-fn seed(seed_hex: &str) -> PyResult<Zeroizing<[u8; 32]>> {
-    let mut bytes = qcore::json::from_hex(seed_hex).map_err(PyValueError::new_err)?;
-    if bytes.len() != 32 {
-        bytes.zeroize();
-        return Err(PyValueError::new_err("a seed is 32 bytes of hex"));
+fn seed(seed_bytes: &[u8]) -> PyResult<Zeroizing<[u8; 32]>> {
+    if seed_bytes.len() != 32 {
+        return Err(PyValueError::new_err(
+            "a seed is 32 raw bytes (pass a bytearray you can wipe, not a hex string)",
+        ));
     }
     let mut seed = Zeroizing::new([0u8; 32]);
-    seed.copy_from_slice(&bytes);
-    bytes.zeroize();
+    seed.copy_from_slice(seed_bytes);
     Ok(seed)
 }
 
 #[pyfunction]
-fn address(seed_hex: &str, index: u64) -> PyResult<String> {
-    Ok(qcore::account_address(&*seed(seed_hex)?, index))
+fn address(seed_bytes: &[u8], index: u64) -> PyResult<String> {
+    Ok(qcore::account_address(&*seed(seed_bytes)?, index))
 }
 
 #[pyfunction]
@@ -39,22 +38,21 @@ fn lookalike_of(candidate: &str, known: Vec<String>) -> Option<String> {
 }
 
 #[pyfunction]
-fn mnemonic_from_seed<'py>(py: Python<'py>, seed_hex: &str) -> PyResult<Bound<'py, PyString>> {
-    let phrase = qcore::mnemonic_from_seed(&*seed(seed_hex)?);
+fn mnemonic_from_seed<'py>(py: Python<'py>, seed_bytes: &[u8]) -> PyResult<Bound<'py, PyString>> {
+    let phrase = qcore::mnemonic_from_seed(&*seed(seed_bytes)?);
     Ok(PyString::new(py, &phrase))
 }
 
 #[pyfunction]
-fn seed_from_mnemonic<'py>(py: Python<'py>, phrase: &str) -> PyResult<Bound<'py, PyString>> {
+fn seed_from_mnemonic<'py>(py: Python<'py>, phrase: &str) -> PyResult<Bound<'py, PyBytes>> {
     let seed = qcore::seed_from_mnemonic(phrase).map_err(PyValueError::new_err)?;
-    let hex = Zeroizing::new(qcore::json::to_hex(&seed[..]));
-    Ok(PyString::new(py, &hex))
+    Ok(PyBytes::new(py, &seed[..]))
 }
 
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn sign_transfer(
-    seed_hex: &str,
+    seed_bytes: &[u8],
     index: u64,
     to: &str,
     amount: u64,
@@ -67,7 +65,7 @@ fn sign_transfer(
         return Err(PyValueError::new_err("the recipient is not a Q1 address"));
     }
     let signed = qcore::sign_transfer(
-        &*seed(seed_hex)?,
+        &*seed(seed_bytes)?,
         index,
         to,
         amount,
@@ -91,7 +89,7 @@ fn sign_transfer(
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn sign_call(
-    seed_hex: &str,
+    seed_bytes: &[u8],
     index: u64,
     target: &str,
     args_hex: &str,
@@ -107,7 +105,7 @@ fn sign_call(
     }
     let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
     let signed = qcore::sign_call(
-        &*seed(seed_hex)?,
+        &*seed(seed_bytes)?,
         index,
         target,
         args,
@@ -133,7 +131,7 @@ fn sign_call(
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn sign_payable_call(
-    seed_hex: &str,
+    seed_bytes: &[u8],
     index: u64,
     target: &str,
     args_hex: &str,
@@ -150,7 +148,7 @@ fn sign_payable_call(
     }
     let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
     let signed = qcore::sign_payable_call(
-        &*seed(seed_hex)?,
+        &*seed(seed_bytes)?,
         index,
         target,
         args,
@@ -176,15 +174,22 @@ fn sign_payable_call(
 
 #[pyfunction]
 fn sign_register(
-    seed_hex: &str,
+    seed_bytes: &[u8],
     index: u64,
     nonce: u64,
     fee: u128,
     chain_id: u64,
     valid_until: u64,
 ) -> PyResult<String> {
-    let signed = qcore::sign_register(&*seed(seed_hex)?, index, nonce, fee, chain_id, valid_until)
-        .map_err(PyValueError::new_err)?;
+    let signed = qcore::sign_register(
+        &*seed(seed_bytes)?,
+        index,
+        nonce,
+        fee,
+        chain_id,
+        valid_until,
+    )
+    .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
         ("from", qcore::json::Json::str(signed.from)),
         ("tx_id", qcore::json::Json::str(signed.tx_id)),
@@ -291,7 +296,7 @@ fn build_typed_order_call(
     ptr_off: u64,
     region_off: u64,
     fields_json: &str,
-    owner_seed_hex: &str,
+    owner_seed_bytes: &[u8],
     owner_index: u64,
     nonce: u64,
 ) -> PyResult<String> {
@@ -308,7 +313,7 @@ fn build_typed_order_call(
         ptr_off,
         region_off,
         &fields,
-        &*seed(owner_seed_hex)?,
+        &*seed(owner_seed_bytes)?,
         owner_index,
         nonce,
     )

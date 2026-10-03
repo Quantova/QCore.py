@@ -26,7 +26,7 @@ MAINNET_CHAIN_ID = qcore.mainnet_chain_id()
 TESTNET_CHAIN_ID = qcore.testnet_chain_id()
 
 def main():
-    seed = "0b" * 32
+    seed = bytes.fromhex("0b" * 32)
     target = qcore.address(seed, 1)
 
     plain = json.loads(qcore.sign_call(seed, 0, target, "", 3, 21000, 9000, LOCAL_CHAIN_ID, 300, 500))

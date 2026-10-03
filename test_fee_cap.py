@@ -52,7 +52,7 @@ def main():
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     client = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
-    seed = "0b" * 32
+    seed = bytes.fromhex("0b" * 32)
     to = qcore.address(seed, 1)
 
     state["fee"] = "100"
