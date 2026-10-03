@@ -83,7 +83,7 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist --locked
           manylinux: auto
-          sccache: 'true'
+          sccache: 'false'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: wheels-${{ matrix.runner }}-${{ matrix.target }}
@@ -233,6 +233,13 @@ jobs:
     permissions:
       id-token: write
     steps:
+      - name: refuse a publish that is not from a version tag
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in
+            refs/tags/v*) ;;
+            *) echo "publish runs only from a vX.Y.Z tag, refusing $GITHUB_REF" >&2; exit 1 ;;
+          esac
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: dist
