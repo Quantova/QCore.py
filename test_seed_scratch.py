@@ -34,7 +34,7 @@ def main():
     else:
         raise AssertionError("a standard BIP-39 phrase was restored as a Quantova phrase")
     try:
-        qcore.seed_from_mnemonic(" ".join(["abandon"] * 24))
+        qcore.seed_from_mnemonic(" ".join(["abandon"] * 25))
     except ValueError as err:
         assert "typo" in str(err), str(err)
     else:
