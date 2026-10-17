@@ -162,6 +162,15 @@ def main():
         if "below the 250" not in str(err):
             fail("unclear head floor error: " + str(err))
     state["head"] = 400
+    try:
+        retry.transfer(seed, 0, to, "4", "1000000")
+        fail("a gateway head past the deadline freed a nonce before blocks could have been made")
+    except RuntimeError as err:
+        if "already signed" not in str(err):
+            fail("unclear held nonce error: " + str(err))
+    for held in retry._signed_nonces.values():
+        for slot, (tx_hex, deadline, signed_at) in list(held.items()):
+            held[slot] = (tx_hex, deadline, signed_at - 15)
     _, outcome = retry.transfer(seed, 0, to, "4", "1000000")
     if outcome["verdict"] != "accepted":
         fail("a held nonce whose deadline has passed was not freed")

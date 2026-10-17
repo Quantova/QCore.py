@@ -130,15 +130,21 @@ _USER_AGENT = f"quantova-qcore/{_VERSION} (+https://quantova.org)"
 
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SafeRedirectHandler())
 
+def _whole(value, message):
+    if isinstance(value, str):
+        if not (value.isascii() and value.isdigit()):
+            raise ValueError(message)
+        return int(value)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(message)
+    return value
+
 def _check_amount(amount):
     if isinstance(amount, bool) or not isinstance(amount, (int, str)):
         raise ValueError(
             "the amount must be a whole number int or a decimal string, never a float"
         )
-    try:
-        value = int(amount)
-    except (TypeError, ValueError):
-        raise ValueError("the amount must be an integer number of Quon")
+    value = _whole(amount, "the amount must be an integer number of Quon")
     if value < 0:
         raise ValueError("the amount cannot be negative")
 
@@ -147,10 +153,7 @@ def _fee_ceiling(max_fee):
         raise ValueError(
             "the maximum fee must be a whole number int or a decimal string, never a float"
         )
-    try:
-        ceiling = int(max_fee)
-    except (TypeError, ValueError):
-        raise ValueError("the maximum fee must be an integer number of Quon")
+    ceiling = _whole(max_fee, "the maximum fee must be an integer number of Quon")
     if ceiling < 0:
         raise ValueError("the maximum fee cannot be negative")
     return ceiling
@@ -158,8 +161,9 @@ def _fee_ceiling(max_fee):
 _VALIDITY_BLOCKS = 300
 _MAX_PLAUSIBLE_HEAD = 1 << 40
 _HEAD_BLOCKS_PER_SEC = 20
-_HEAD_SLACK_SECS = 60
+_HEAD_SLACK_BLOCKS = 240
 _GENESIS_FLOOR_SECS = 1735689600
+_TESTNET_GENESIS_SECS = 1791082813
 
 def _valid_until(info):
     head = info.get("head_height") if isinstance(info, dict) else None
@@ -347,7 +351,12 @@ class Client:
             return
         held = self._signed_nonces.setdefault(key, {})
         head = until - _VALIDITY_BLOCKS
-        for expired in [at for at, (_, deadline) in held.items() if head > deadline]:
+        now = time.monotonic()
+        for expired in [
+            slot_key
+            for slot_key, (_, deadline, signed_at) in held.items()
+            if head > deadline and int(now - signed_at) * _HEAD_BLOCKS_PER_SEC >= _VALIDITY_BLOCKS
+        ]:
             del held[expired]
         seen = held.get(slot)
         if not explicit and seen is not None and seen[0] != tx_hex:
@@ -356,7 +365,7 @@ class Client:
                 "was neither rejected nor expired; one nonce carries one signature, pass the nonce "
                 "explicitly to replace one that never landed"
             )
-        held[slot] = (tx_hex, until)
+        held[slot] = (tx_hex, until, now)
 
     def _remember(self, key, used, outcome):
         verdict = outcome.get("verdict") if isinstance(outcome, dict) else None
@@ -370,8 +379,9 @@ class Client:
         head = until - _VALIDITY_BLOCKS
         now = time.monotonic()
         wall = time.time()
-        if wall > _GENESIS_FLOOR_SECS:
-            max_head = (int(wall - _GENESIS_FLOOR_SECS) + _HEAD_SLACK_SECS) * _HEAD_BLOCKS_PER_SEC
+        genesis = _TESTNET_GENESIS_SECS if info.get("chain_id") == "Q-test-net-1" else _GENESIS_FLOOR_SECS
+        if wall > genesis:
+            max_head = int(wall - genesis) * _HEAD_BLOCKS_PER_SEC + _HEAD_SLACK_BLOCKS
             if head > max_head:
                 raise RuntimeError(
                     f"the gateway reports head {head} further ahead than wall-clock time allows, refusing to sign"
@@ -382,7 +392,7 @@ class Client:
                 raise RuntimeError(
                     f"the gateway reports head {head} below the {floor} it reported earlier, refusing to sign"
                 )
-            allowed = (int(now - at) + _HEAD_SLACK_SECS) * _HEAD_BLOCKS_PER_SEC
+            allowed = int(now - at) * _HEAD_BLOCKS_PER_SEC + _HEAD_SLACK_BLOCKS
             if head > floor + allowed:
                 raise RuntimeError(
                     f"the gateway head leapt from {floor} to {head} faster than blocks are made, refusing to sign"
@@ -463,7 +473,7 @@ class Client:
         self._guard_mainnet()
         chain_id = self._signing_chain_id(info)
         transfer_fee = int(_transfer_fee(info))
-        fee = vm_call_fee(transfer_fee, int(meter_limit))
+        fee = vm_call_fee(transfer_fee, _whole(meter_limit, "the meter limit must be a whole number"))
         if fee > ceiling:
             raise ValueError(
                 f"the fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
@@ -477,7 +487,7 @@ class Client:
         nonce = self._checked_nonce(nonce, expected_nonce, sender)
         signed = _loads(
             sign_call(
-                seed_hex, index, target, args_hex, nonce, int(meter_limit), fee, chain_id,
+                seed_hex, index, target, args_hex, nonce, _whole(meter_limit, "the meter limit must be a whole number"), fee, chain_id,
                 until, transfer_fee,
             )
         )
