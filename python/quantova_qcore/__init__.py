@@ -5,6 +5,7 @@
 import importlib.metadata
 import ipaddress
 import json
+import re
 import secrets
 import ssl
 import threading
@@ -212,6 +213,16 @@ except importlib.metadata.PackageNotFoundError:
 
 _USER_AGENT = f"quantova-qcore/{_VERSION} (+https://quantova.org)"
 
+_HIDDEN = re.compile("[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]")
+_ACCOUNT_LOCKS = {}
+_ACCOUNT_LOCKS_GUARD = threading.Lock()
+
+
+def _shown(value):
+    text = _HIDDEN.sub("", str(value))
+    return text[:96] + "..." if len(text) > 96 else text
+
+
 def _tls_context():
     context = ssl.create_default_context()
     context.check_hostname = True
@@ -346,15 +357,13 @@ class Client:
         self._pinned_chain = self.network.chain_id if self.network else None
         self._head_floor = None
         self._session = SigningSession([str(a) for a in (address_book or [])])
-        self._locks = {}
-        self._locks_guard = threading.Lock()
 
     def _sender_lock(self, sender):
-        with self._locks_guard:
-            lock = self._locks.get(sender)
+        with _ACCOUNT_LOCKS_GUARD:
+            lock = _ACCOUNT_LOCKS.get(sender)
             if lock is None:
                 lock = threading.Lock()
-                self._locks[sender] = lock
+                _ACCOUNT_LOCKS[sender] = lock
             return lock
 
     def _guard_mainnet(self):
@@ -379,22 +388,22 @@ class Client:
         if configured:
             if name != configured:
                 raise RuntimeError(
-                    f"the gateway reports chain {name} but this client is configured for {configured}; "
+                    f"the gateway reports chain {_shown(name)} but this client is configured for {configured}; "
                     "refusing to sign a transaction that would be valid on a network you did not choose"
                 )
         elif _is_public_chain(name) and not (mainnet and self.acknowledge_mainnet):
             raise RuntimeError(
-                f"the gateway reports the public chain {name} but this client was opened for an unnamed "
+                f"the gateway reports the public chain {_shown(name)} but this client was opened for an unnamed "
                 "network; configure the testnet or mainnet network before signing for it"
             )
         if mainnet and not self.acknowledge_mainnet:
             raise ValueError(
-                f"the gateway reports the mainnet chain {name}; "
+                f"the gateway reports the mainnet chain {_shown(name)}; "
                 "refusing to sign a mainnet transaction without acknowledge_mainnet True"
             )
         if self._pinned_chain is not None and name != self._pinned_chain:
             raise RuntimeError(
-                f"the gateway reports chain {name} but this session is pinned to {self._pinned_chain}; "
+                f"the gateway reports chain {_shown(name)} but this session is pinned to {self._pinned_chain}; "
                 "refusing to switch the signing chain mid-session"
             )
         self._pinned_chain = name
@@ -416,7 +425,7 @@ class Client:
         except urllib.error.HTTPError as err:
             data = _loads(_decode(_read_bounded(err)))
             message = data.get("message") or data.get("error") if isinstance(data, dict) else None
-            raise RuntimeError(message or f"status {err.code}")
+            raise RuntimeError(_shown(message) if message else f"status {err.code}")
 
     def node_info(self):
         return self._call("node_info", "{}", strict=True)
@@ -429,7 +438,7 @@ class Client:
         answered = acct.get("address") if isinstance(acct, dict) else None
         if answered != addr:
             raise RuntimeError(
-                f"the gateway answered for {answered} when asked about {addr}, refusing to trust it"
+                f"the gateway answered for {_shown(answered)} when asked about {addr}, refusing to trust it"
             )
         return acct
 
@@ -453,7 +462,7 @@ class Client:
         outcome = self.submit(tx_hex)
         verdict = outcome.get("verdict") if isinstance(outcome, dict) else None
         if verdict not in ("accepted", "rejected"):
-            raise RuntimeError(f"unknown verdict {verdict}")
+            raise RuntimeError(f"unknown verdict {_shown(verdict)}")
         for key, slot in slots:
             self._session.outcome(key, slot, verdict == "accepted")
         return outcome
