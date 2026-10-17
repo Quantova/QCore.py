@@ -169,6 +169,14 @@ impl SigningSession {
         self.0.signed(key, slot)
     }
 
+    fn release(&mut self, key: &str, slot: u64) {
+        self.0.release(key, slot)
+    }
+
+    fn release_pending(&mut self, key: &str) {
+        self.0.release_pending(key)
+    }
+
     fn outcome(&mut self, key: &str, slot: u64, accepted: bool) {
         self.0.outcome(key, slot, accepted)
     }

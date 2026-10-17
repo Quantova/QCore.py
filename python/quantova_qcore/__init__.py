@@ -454,6 +454,7 @@ class Client:
     def _account_slot(self, sender, expected_nonce):
         acct = self.account(sender)
         reported = _gateway_integer(acct.get("nonce"), "nonce")
+        self._session.release_pending(sender)
         return self._session.slot(sender, reported, _expected(expected_nonce, "expected nonce"), False)
 
     def _submit_held(self, slots, tx_hex):
