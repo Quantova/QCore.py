@@ -102,7 +102,7 @@ dependencies = [
 
 [[package]]
 name = "qcore"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "qtv-account",
  "qtv-attest",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "qcore-python"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "pyo3",
  "qcore",

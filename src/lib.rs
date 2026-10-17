@@ -536,8 +536,8 @@ fn check_valid_until(valid_until: u64, head: u64) -> PyResult<()> {
 }
 
 #[pyfunction]
-fn chain_id_from_name(name: &str) -> u64 {
-    qcore::chain_id_from_name(name)
+fn chain_id_from_name(name: &str) -> PyResult<u64> {
+    qcore::checked_chain_id(name).map_err(PyValueError::new_err)
 }
 
 #[pyfunction]
