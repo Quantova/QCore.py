@@ -733,11 +733,9 @@ fn parse_roster(roster_json: &str) -> Result<Vec<qcore::finality::RosterMember>,
             .get("stake")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "a roster member needs a stake as a digit string".to_string())?;
-        if stake.is_empty() || !stake.bytes().all(|b| b.is_ascii_digit()) {
-            return Err("a roster stake is not a whole number".to_string());
-        }
-        let stake: u64 = stake
-            .parse()
+        let stake: u64 = qcore::canonical_decimal(stake)
+            .ok_or_else(|| "a roster stake is not a canonical whole number".to_string())?
+            .try_into()
             .map_err(|_| "a roster stake is out of range".to_string())?;
         let pk = item
             .get("attest_pk")
