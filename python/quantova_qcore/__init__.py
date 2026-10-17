@@ -6,17 +6,20 @@ import importlib.metadata
 import ipaddress
 import json
 import secrets
+import ssl
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 from ._native import (
+    SigningSession,
     address,
     valid_address,
     same_address,
     lookalike_of,
     mnemonic_from_seed,
+    mnemonic_from_seed_text,
     seed_from_mnemonic,
     sign_transfer,
     sign_call,
@@ -34,6 +37,31 @@ from ._native import (
     account_body,
     transaction_body,
     block_by_height_body,
+    genesis_secs,
+    head_ceiling,
+    bounded_valid_until,
+    check_gateway_json,
+    testnet_rpc_url,
+    testnet_chain_name,
+    validity_blocks,
+    order_signer,
+    vm_deploy_address,
+    contract_address,
+    nonce_slot_key,
+    scalar_slot_key,
+    map_slot_key,
+    map_addr_word_key,
+    name_key,
+    token_decimals_slot,
+    token_symbol_slot,
+    pack_symbol,
+    unpack_symbol,
+    storage_body,
+    events_body,
+    asset_balance_body,
+    asset_supply_body,
+    storage_value,
+    parse_events,
 )
 
 def generate_seed():
@@ -48,12 +76,14 @@ def _is_public_chain(name):
 __all__ = [
     "Client",
     "Network",
+    "SigningSession",
     "generate_seed",
     "address",
     "valid_address",
     "same_address",
     "lookalike_of",
     "mnemonic_from_seed",
+    "mnemonic_from_seed_text",
     "seed_from_mnemonic",
     "sign_transfer",
     "sign_call",
@@ -71,6 +101,31 @@ __all__ = [
     "account_body",
     "transaction_body",
     "block_by_height_body",
+    "genesis_secs",
+    "head_ceiling",
+    "bounded_valid_until",
+    "check_gateway_json",
+    "testnet_rpc_url",
+    "testnet_chain_name",
+    "validity_blocks",
+    "order_signer",
+    "vm_deploy_address",
+    "contract_address",
+    "nonce_slot_key",
+    "scalar_slot_key",
+    "map_slot_key",
+    "map_addr_word_key",
+    "name_key",
+    "token_decimals_slot",
+    "token_symbol_slot",
+    "pack_symbol",
+    "unpack_symbol",
+    "storage_body",
+    "events_body",
+    "asset_balance_body",
+    "asset_supply_body",
+    "storage_value",
+    "parse_events",
 ]
 
 _MAX_RESPONSE = 8 * 1024 * 1024
@@ -96,6 +151,20 @@ def _loads(raw):
         return json.loads(raw)
     except (ValueError, RecursionError):
         raise RuntimeError("the gateway returned a response that is not valid JSON")
+
+def _decode(raw):
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise RuntimeError("the response is not UTF-8")
+
+def _strict_loads(raw):
+    text = _decode(raw)
+    try:
+        check_gateway_json(text)
+    except ValueError as err:
+        raise RuntimeError(str(err))
+    return _loads(text)
 
 def _is_loopback(host):
     if host is None:
@@ -130,7 +199,18 @@ except importlib.metadata.PackageNotFoundError:
 
 _USER_AGENT = f"quantova-qcore/{_VERSION} (+https://quantova.org)"
 
-_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SafeRedirectHandler())
+def _tls_context():
+    context = ssl.create_default_context()
+    context.check_hostname = True
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+_OPENER = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}),
+    urllib.request.HTTPSHandler(context=_tls_context()),
+    _SafeRedirectHandler(),
+)
 
 def _whole(value, message):
     if isinstance(value, str):
@@ -160,40 +240,40 @@ def _fee_ceiling(max_fee):
         raise ValueError("the maximum fee cannot be negative")
     return ceiling
 
-_VALIDITY_BLOCKS = 300
+_VALIDITY_BLOCKS = validity_blocks()
 _MAX_PLAUSIBLE_HEAD = 1 << 40
-_HEAD_BLOCKS_PER_SEC = 20
-_HEAD_SLACK_BLOCKS = 240
-_GENESIS_FLOOR_SECS = 1735689600
-_TESTNET_GENESIS_SECS = 1791082813
+_U64_MAX = 0xFFFFFFFFFFFFFFFF
+_U128_MAX = (1 << 128) - 1
+
+def _gateway_integer(value, label):
+    if value is None:
+        raise RuntimeError(f"the gateway did not report a {label}")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > _U64_MAX:
+        raise RuntimeError(f"the gateway reported a {label} that is not a whole number")
+    return value
+
+def _gateway_decimal(value, label):
+    if value is None:
+        raise RuntimeError(f"the gateway did not report a {label}")
+    if not isinstance(value, str) or not (value.isascii() and value.isdigit()):
+        raise RuntimeError(f"the gateway reported a {label} that is not a string of decimal digits")
+    parsed = int(value)
+    if parsed > _U128_MAX:
+        raise RuntimeError(f"the gateway reported a {label} outside the unsigned 128 bit range")
+    return parsed
 
 def _valid_until(info):
-    head = info.get("head_height") if isinstance(info, dict) else None
-    if head is None:
-        raise RuntimeError("the gateway did not report a head height to bound the transaction to")
-    if isinstance(head, bool) or not isinstance(head, int):
-        raise RuntimeError("the gateway reported a head height that is not a whole number")
-    if head < 0 or head > _MAX_PLAUSIBLE_HEAD:
+    head = _gateway_integer(info.get("head_height") if isinstance(info, dict) else None, "head height")
+    if head > _MAX_PLAUSIBLE_HEAD:
         raise RuntimeError("the gateway reported a head height past any height this chain can have reached")
     return head + _VALIDITY_BLOCKS
 
-
-def _account_nonce(nonce):
-    if isinstance(nonce, bool) or isinstance(nonce, float):
-        raise RuntimeError("the gateway reported a nonce that is not a whole number")
-    try:
-        parsed = int(nonce)
-    except (TypeError, ValueError):
-        raise RuntimeError("the gateway reported a nonce that is not a whole number")
-    if parsed < 0 or parsed > 0xFFFFFFFFFFFFFFFF:
-        raise RuntimeError("the gateway reported a nonce outside the unsigned 64 bit range")
-    return parsed
-
-
-def _expected_nonce(nonce):
-    if isinstance(nonce, bool) or not isinstance(nonce, int) or nonce < 0 or nonce > 0xFFFFFFFFFFFFFFFF:
-        raise ValueError("the expected nonce must be a whole number int in the unsigned 64 bit range")
-    return nonce
+def _expected(value, label):
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > _U64_MAX:
+        raise ValueError(f"the {label} must be a whole number int in the unsigned 64 bit range")
+    return value
 
 DENOMINATION = "Quon"
 DECIMALS = 6
@@ -211,8 +291,8 @@ class Network:
 
     @classmethod
     def testnet(cls):
-        return cls(name="testnet", chain_id="Q-test-net-1",
-                   rpc_url="https://rpc-testnet.quantova.org",
+        return cls(name="testnet", chain_id=testnet_chain_name(),
+                   rpc_url=testnet_rpc_url(),
                    explorer_url="https://qvmscan.io", is_mainnet=False)
 
     @classmethod
@@ -228,15 +308,10 @@ def _transfer_fee(info):
     fee_obj = info.get("fee") if isinstance(info, dict) else None
     if not isinstance(fee_obj, dict):
         raise RuntimeError("the gateway did not report a transfer fee")
-    fee = fee_obj.get("transfer_quon")
-    if fee is None:
-        raise RuntimeError("the gateway did not report a transfer fee")
-    if isinstance(fee, bool) or isinstance(fee, float):
-        raise RuntimeError("the gateway reported a non integer transfer fee")
-    return fee
+    return _gateway_decimal(fee_obj.get("transfer_quon"), "transfer fee")
 
 class Client:
-    def __init__(self, target, acknowledge_mainnet=False, network=None):
+    def __init__(self, target, acknowledge_mainnet=False, network=None, address_book=None):
         self.acknowledge_mainnet = acknowledge_mainnet is True
         if isinstance(target, Network):
             self.network = target
@@ -257,8 +332,7 @@ class Client:
         self.base = _require_safe_transport(base).rstrip("/")
         self._pinned_chain = self.network.chain_id if self.network else None
         self._head_floor = None
-        self._next_nonces = {}
-        self._signed_nonces = {}
+        self._session = SigningSession([str(a) for a in (address_book or [])])
 
     def _guard_mainnet(self):
         on_mainnet = self.network is not None and self.network.is_mainnet
@@ -303,7 +377,7 @@ class Client:
         self._pinned_chain = name
         return chain_id_from_name(name)
 
-    def _call(self, method, body):
+    def _call(self, method, body, strict=False):
         req = urllib.request.Request(
             f"{self.base}/v1/{method}",
             data=(body or "{}").encode(),
@@ -312,20 +386,23 @@ class Client:
         )
         try:
             with _OPENER.open(req, timeout=20) as res:
-                return _loads(_read_bounded(res))
+                raw = _read_bounded(res)
+                if res.status != 200:
+                    raise RuntimeError(f"status {res.status}")
+                return _strict_loads(raw) if strict else _loads(_decode(raw))
         except urllib.error.HTTPError as err:
-            data = _loads(_read_bounded(err))
+            data = _loads(_decode(_read_bounded(err)))
             message = data.get("message") or data.get("error") if isinstance(data, dict) else None
             raise RuntimeError(message or f"status {err.code}")
 
     def node_info(self):
-        return self._call("node_info", "{}")
+        return self._call("node_info", "{}", strict=True)
 
     def head(self):
         return self._call("head", "{}")
 
     def account(self, addr):
-        acct = self._call("get_account", account_body(addr))
+        acct = self._call("get_account", account_body(addr), strict=True)
         answered = acct.get("address") if isinstance(acct, dict) else None
         if answered != addr:
             raise RuntimeError(
@@ -333,76 +410,54 @@ class Client:
             )
         return acct
 
-    def _checked_nonce(self, reported, expected, key=None):
-        nonce = _account_nonce(reported)
-        if expected is not None:
-            want = _expected_nonce(expected)
-            if want != nonce:
-                raise RuntimeError(
-                    f"the gateway reported nonce {nonce} but you expected {want}; the chain admits "
-                    "only the nonce the account has reached, refusing to sign"
-                )
-        if key is not None:
-            local = self._next_nonces.get(key)
-            if local is None or local < nonce:
-                self._next_nonces[key] = nonce
-        return nonce
+    def _vet(self, sender, targets):
+        self._session.remember_address(sender)
+        for target in targets:
+            self._session.check_target(target)
 
-    def _guard_signed(self, key, slot, tx_hex, until, explicit=False):
-        if key is None:
-            return
-        held = self._signed_nonces.setdefault(key, {})
-        head = until - _VALIDITY_BLOCKS
-        now = time.monotonic()
-        for expired in [
-            slot_key
-            for slot_key, (_, deadline, signed_at) in held.items()
-            if head > deadline and int(now - signed_at) * _HEAD_BLOCKS_PER_SEC >= _VALIDITY_BLOCKS
-        ]:
-            del held[expired]
-        seen = held.get(slot)
-        if not explicit and seen is not None and seen[0] != tx_hex:
-            raise RuntimeError(
-                f"a different transaction was already signed for nonce {slot} in this session and "
-                "was neither rejected nor expired; one nonce carries one signature, pass the nonce "
-                "explicitly to replace one that never landed"
-            )
-        held[slot] = (tx_hex, until, now)
+    def _remember_targets(self, targets):
+        for target in targets:
+            self._session.remember_address(target)
 
-    def _remember(self, key, used, outcome):
+    def _account_slot(self, sender, expected_nonce):
+        acct = self.account(sender)
+        reported = _gateway_integer(acct.get("nonce"), "nonce")
+        return self._session.slot(sender, reported, _expected(expected_nonce, "expected nonce"), False)
+
+    def _submit_held(self, slots, tx_hex):
+        for key, slot in slots:
+            self._session.signed(key, slot)
+        outcome = self.submit(tx_hex)
         verdict = outcome.get("verdict") if isinstance(outcome, dict) else None
-        if verdict == "accepted":
-            local = self._next_nonces.get(key)
-            if local is None or local < used + 1:
-                self._next_nonces[key] = used + 1
+        if verdict not in ("accepted", "rejected"):
+            raise RuntimeError(f"unknown verdict {verdict}")
+        for key, slot in slots:
+            self._session.outcome(key, slot, verdict == "accepted")
+        return outcome
 
     def _validity(self, info):
-        until = _valid_until(info)
-        head = until - _VALIDITY_BLOCKS
+        head = _gateway_integer(info.get("head_height") if isinstance(info, dict) else None, "head height")
+        chain = info.get("chain_id") if isinstance(info.get("chain_id"), str) else ""
         now = time.monotonic()
-        wall = time.time()
-        genesis = _TESTNET_GENESIS_SECS if info.get("chain_id") == "Q-test-net-1" else _GENESIS_FLOOR_SECS
-        if wall > genesis:
-            max_head = int(wall - genesis) * _HEAD_BLOCKS_PER_SEC + _HEAD_SLACK_BLOCKS
-            if head > max_head:
-                raise RuntimeError(
-                    f"the gateway reports head {head} further ahead than wall-clock time allows, refusing to sign"
-                )
-        if self._head_floor is not None:
-            floor, at = self._head_floor
-            if head < floor:
-                raise RuntimeError(
-                    f"the gateway reports head {head} below the {floor} it reported earlier, refusing to sign"
-                )
-            allowed = int(now - at) * _HEAD_BLOCKS_PER_SEC + _HEAD_SLACK_BLOCKS
-            if head > floor + allowed:
-                raise RuntimeError(
-                    f"the gateway head leapt from {floor} to {head} faster than blocks are made, refusing to sign"
-                )
-        check_valid_until(until, head)
-        if self._head_floor is None or head > self._head_floor[0]:
+        wall = int(time.time())
+        floor = self._head_floor
+        age = int(now - floor[1]) if floor is not None and now > floor[1] else 0
+        try:
+            until = bounded_valid_until(chain, head, max(wall, 0), floor[0] if floor else None, age)
+        except ValueError as err:
+            raise RuntimeError(str(err))
+        if floor is None or head > floor[0]:
             self._head_floor = (head, now)
         return until
+
+    def _call_fee(self, info, meter, ceiling, max_fee):
+        transfer_fee = _transfer_fee(info)
+        fee = vm_call_fee(transfer_fee, meter)
+        if fee > ceiling:
+            raise ValueError(
+                f"the fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
+            )
+        return transfer_fee, fee
 
     def transaction(self, tx_id):
         return self._call("get_transaction", transaction_body(tx_id))
@@ -411,132 +466,119 @@ class Client:
         return self._call("get_block", block_by_height_body(height))
 
     def submit(self, tx_hex):
-        return self._call("submit_transaction", submit_body(tx_hex))
+        return self._call("submit_transaction", submit_body(tx_hex), strict=True)
 
-    def address(self, seed_hex, index):
-        return address(seed_hex, index)
+    def storage(self, contract):
+        return self._call("get_storage", storage_body(contract))
 
-    def transfer(self, seed_hex, index, to, amount, max_fee, expected_nonce=None):
+    def events(self, height):
+        return self._call("get_events", events_body(_whole(height, "the height must be a whole number")))
+
+    def _slot_value(self, contract, key):
+        resp = self._call("get_storage_at", json.dumps({"address": contract, "keys": [key]}), strict=True)
+        return storage_value(json.dumps(resp), key)
+
+    def contract_nonce(self, contract, signer_hex):
+        return self._slot_value(contract, nonce_slot_key(signer_hex))
+
+    def contract_scalar(self, contract, slot):
+        return self._slot_value(contract, scalar_slot_key(_whole(slot, "the slot must be a whole number")))
+
+    def contract_map(self, contract, map_domain_tag, key_hex):
+        tag = _whole(map_domain_tag, "the map domain tag must be a whole number")
+        return self._slot_value(contract, map_slot_key(tag, key_hex))
+
+    def asset_balance(self, issuer, holder):
+        if not valid_address(issuer) or not valid_address(holder):
+            raise ValueError("the issuer or holder is not a Q1 address")
+        resp = self._call("get_asset_balance", asset_balance_body(issuer, holder), strict=True)
+        return _gateway_decimal(resp.get("balance") if isinstance(resp, dict) else None, "balance")
+
+    def address(self, seed, index):
+        return address(seed, index)
+
+    def transfer(self, seed, index, to, amount, max_fee, expected_nonce=None):
         if not valid_address(to):
             raise ValueError("the recipient is not a Q1 address")
         _check_amount(amount)
         ceiling = _fee_ceiling(max_fee)
+        sender = address(seed, index)
+        self._vet(sender, [to])
         info = self.node_info()
         self._guard_mainnet()
         chain_id = self._signing_chain_id(info)
         fee = _transfer_fee(info)
-        if int(fee) > ceiling:
-            raise ValueError(
-                f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
-            )
-        until = self._validity(info)
-        sender = address(seed_hex, index)
-        acct = self.account(sender)
-        nonce = acct.get("nonce") if isinstance(acct, dict) else None
-        if nonce is None:
-            raise RuntimeError("the gateway did not report a nonce")
-        nonce = self._checked_nonce(nonce, expected_nonce, sender)
-        signed = _loads(
-            sign_transfer(seed_hex, index, to, int(amount), nonce, int(fee), chain_id, until)
-        )
-        self._guard_signed(sender, nonce, signed["tx_hex"], until, expected_nonce is not None)
-        outcome = self.submit(signed["tx_hex"])
-        self._remember(sender, nonce, outcome)
-        return signed, outcome
-
-    def register(self, seed_hex, index, max_fee, expected_nonce=None):
-        ceiling = _fee_ceiling(max_fee)
-        info = self.node_info()
-        self._guard_mainnet()
-        chain_id = self._signing_chain_id(info)
-        fee = _transfer_fee(info)
-        if int(fee) > ceiling:
-            raise ValueError(
-                f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
-            )
-        until = self._validity(info)
-        sender = address(seed_hex, index)
-        acct = self.account(sender)
-        nonce = acct.get("nonce") if isinstance(acct, dict) else None
-        if nonce is None:
-            raise RuntimeError("the gateway did not report a nonce")
-        nonce = self._checked_nonce(nonce, expected_nonce, sender)
-        signed = _loads(sign_register(seed_hex, index, nonce, int(fee), chain_id, until))
-        self._guard_signed(sender, nonce, signed["tx_hex"], until, expected_nonce is not None)
-        outcome = self.submit(signed["tx_hex"])
-        self._remember(sender, nonce, outcome)
-        return signed, outcome
-
-    def call(self, seed_hex, index, target, args_hex, meter_limit, max_fee, expected_nonce=None):
-        if not valid_address(target):
-            raise ValueError("the target is not a Q1 address")
-        ceiling = _fee_ceiling(max_fee)
-        info = self.node_info()
-        self._guard_mainnet()
-        chain_id = self._signing_chain_id(info)
-        transfer_fee = int(_transfer_fee(info))
-        fee = vm_call_fee(transfer_fee, _whole(meter_limit, "the meter limit must be a whole number"))
         if fee > ceiling:
             raise ValueError(
-                f"the fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
+                f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
             )
         until = self._validity(info)
-        sender = address(seed_hex, index)
-        acct = self.account(sender)
-        nonce = acct.get("nonce") if isinstance(acct, dict) else None
-        if nonce is None:
-            raise RuntimeError("the gateway did not report a nonce")
-        nonce = self._checked_nonce(nonce, expected_nonce, sender)
+        nonce = self._account_slot(sender, expected_nonce)
         signed = _loads(
-            sign_call(
-                seed_hex, index, target, args_hex, nonce, _whole(meter_limit, "the meter limit must be a whole number"), fee, chain_id,
-                until, transfer_fee,
-            )
+            sign_transfer(seed, index, to, _whole(amount, "the amount must be an integer number of Quon"), nonce, fee, chain_id, until)
         )
-        self._guard_signed(sender, nonce, signed["tx_hex"], until, expected_nonce is not None)
-        outcome = self.submit(signed["tx_hex"])
-        self._remember(sender, nonce, outcome)
+        self._remember_targets([to])
+        outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
         return signed, outcome
 
-    def _signed_call(self, seed_hex, index, meter_limit, max_fee, expected_nonce, sign):
+    def register(self, seed, index, max_fee, expected_nonce=None):
+        ceiling = _fee_ceiling(max_fee)
+        sender = address(seed, index)
+        self._vet(sender, [])
+        info = self.node_info()
+        self._guard_mainnet()
+        chain_id = self._signing_chain_id(info)
+        fee = _transfer_fee(info)
+        if fee > ceiling:
+            raise ValueError(
+                f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
+            )
+        until = self._validity(info)
+        nonce = self._account_slot(sender, expected_nonce)
+        signed = _loads(sign_register(seed, index, nonce, fee, chain_id, until))
+        outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
+        return signed, outcome
+
+    def _signed_call(self, seed, index, targets, meter_limit, max_fee, expected_nonce, sign):
         ceiling = _fee_ceiling(max_fee)
         meter = _whole(meter_limit, "the meter limit must be a whole number")
+        sender = address(seed, index)
+        self._vet(sender, targets)
         info = self.node_info()
         self._guard_mainnet()
         chain_id = self._signing_chain_id(info)
-        transfer_fee = int(_transfer_fee(info))
-        fee = vm_call_fee(transfer_fee, meter)
-        if fee > ceiling:
-            raise ValueError(
-                f"the fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
-            )
+        transfer_fee, fee = self._call_fee(info, meter, ceiling, max_fee)
         until = self._validity(info)
-        sender = address(seed_hex, index)
-        acct = self.account(sender)
-        nonce = acct.get("nonce") if isinstance(acct, dict) else None
-        if nonce is None:
-            raise RuntimeError("the gateway did not report a nonce")
-        nonce = self._checked_nonce(nonce, expected_nonce, sender)
+        nonce = self._account_slot(sender, expected_nonce)
         signed = _loads(sign(nonce, meter, fee, chain_id, until, transfer_fee))
-        self._guard_signed(sender, nonce, signed["tx_hex"], until, expected_nonce is not None)
-        outcome = self.submit(signed["tx_hex"])
-        self._remember(sender, nonce, outcome)
+        self._remember_targets(targets)
+        outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
         return signed, outcome
 
-    def payable_call(self, seed_hex, index, target, args_hex, value, meter_limit, max_fee, expected_nonce=None):
+    def call(self, seed, index, target, args_hex, meter_limit, max_fee, expected_nonce=None):
+        if not valid_address(target):
+            raise ValueError("the target is not a Q1 address")
+        return self._signed_call(
+            seed, index, [target], meter_limit, max_fee, expected_nonce,
+            lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_call(
+                seed, index, target, args_hex, nonce, meter, fee, chain_id, until, transfer_fee,
+            ),
+        )
+
+    def payable_call(self, seed, index, target, args_hex, value, meter_limit, max_fee, expected_nonce=None):
         if not valid_address(target):
             raise ValueError("the target is not a Q1 address")
         _check_amount(value)
         amount = _whole(value, "the value must be an integer number of Quon")
         return self._signed_call(
-            seed_hex, index, meter_limit, max_fee, expected_nonce,
+            seed, index, [target], meter_limit, max_fee, expected_nonce,
             lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_payable_call(
-                seed_hex, index, target, args_hex, nonce, meter, fee, amount, chain_id, until,
+                seed, index, target, args_hex, nonce, meter, fee, amount, chain_id, until,
                 transfer_fee,
             ),
         )
 
-    def asset_call(self, seed_hex, index, target, args_hex, asset_issuer, amount, meter_limit, max_fee, expected_nonce=None):
+    def asset_call(self, seed, index, target, args_hex, asset_issuer, amount, meter_limit, max_fee, expected_nonce=None):
         if not valid_address(target):
             raise ValueError("the target is not a Q1 address")
         if not valid_address(asset_issuer):
@@ -544,9 +586,9 @@ class Client:
         _check_amount(amount)
         moved = _whole(amount, "the amount must be an integer number of Quon")
         return self._signed_call(
-            seed_hex, index, meter_limit, max_fee, expected_nonce,
+            seed, index, [target, asset_issuer], meter_limit, max_fee, expected_nonce,
             lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_asset_call(
-                seed_hex, index, target, args_hex, asset_issuer, moved, nonce, meter, fee,
+                seed, index, target, args_hex, asset_issuer, moved, nonce, meter, fee,
                 chain_id, until, transfer_fee,
             ),
         )

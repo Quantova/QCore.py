@@ -2,7 +2,7 @@
 
 The Quantova post quantum client core for Python. It is the Rust core QCore.rs built as a native extension with pyo3, so the key derivation, the post quantum signing, and every RPC request body are the core's and are never rewritten in Python. This package does the HTTP and reads the documented response fields, and the core does everything that has to be exactly right. A second implementation of the signing would be a second chance to be wrong with a user's money, so there is only ever the one.
 
-One core with one binding for each language. QCore.rs is the Rust core. QCore.js is the JavaScript binding over it. QCore.py is this Python binding over it. It imports as qcore. It is not published on PyPI, and the project named qcore on PyPI is an unrelated package, so never install it with pip install qcore. Build it from this repository with maturin as described under Building.
+One core with one binding for each language. QCore.rs is the Rust core. QCore.js is the JavaScript binding over it. QCore.py is this Python binding over it. It imports as quantova_qcore, a name distinct from the unrelated qcore project, and the distribution is quantova-qcore. It is not published on PyPI, and the project named qcore on PyPI is an unrelated package, so never install it with pip install qcore. Earlier releases imported as qcore, and that name is gone so it can never be confused with the unrelated package. Build it from this repository with maturin as described under Building.
 
 ## What this library is for
 
@@ -27,13 +27,15 @@ Quantova shares no wire, no address, and no unit with any other chain, and QCore
 ## Creating a wallet
 
 ```python
-import qcore
+import quantova_qcore as qcore
 
 seed = qcore.generate_seed()             # thirty two random bytes in a bytearray from the platform source
-phrase = qcore.mnemonic_from_seed(seed)  # the only backup, shown once and kept on the device
+phrase = qcore.mnemonic_from_seed(seed)  # the only backup as UTF-8 bytes in a bytearray you can wipe
 ```
 
-`qcore.seed_from_mnemonic(phrase)` restores the seed from the twenty five words as a bytearray. It ignores case and extra spacing and folds full width and other compatibility letters through a fixed table before it looks a word up, so a phrase pasted with capitals, non breaking spaces, or full width letters restores the same seed. A standard BIP-39 phrase from another wallet is refused with its own error, since a Quantova phrase carries a SHA3 checksum and cannot be restored from it.
+`qcore.seed_from_mnemonic(phrase)` restores the seed from the twenty five words as a bytearray. It ignores case and extra spacing and folds full width and other compatibility letters through a fixed table before it looks a word up, so a phrase pasted with capitals, non breaking spaces, or full width letters restores the same seed. A standard BIP-39 phrase from another wallet is refused with its own error, since a Quantova phrase carries a SHA3 checksum and cannot be restored from it. It takes the phrase as a str, bytes or bytearray. `qcore.mnemonic_from_seed` returns a bytearray, so overwrite it with zeros once the words have been shown, and `qcore.mnemonic_from_seed_text` returns a str for a caller that must display the words. A Python str can never be wiped, so prefer the bytes.
+
+The Client checks every number the gateway reports before it signs. A fee or balance must be a string of the ASCII digits zero to nine, a nonce or head height must be a JSON integer, and the head is bounded by the time since the genesis of the named network, a constant read from the Rust core so all three QCore clients share one value. The Client keeps a signing session in memory. A nonce it signed once is not signed again until you pass that nonce as expected_nonce, and a gateway that rejects a transaction and then reports a later nonce is refused for the same reason. Pass address_book, a list of Q1 addresses you trust, and the Client refuses to sign for a target that shares two or more leading and trailing characters with a known address, eight in all, but is a different address. The Client also reads contract state with storage, events, contract_nonce, contract_scalar, contract_map and asset_balance, and reaches https gateways with certificate verification and TLS 1.2 or later.
 
 `Client.call`, `Client.payable_call` and `Client.asset_call` sign a contract call, a call that moves Quon and a call that moves an issued asset, each bounded by the fee ceiling you pass.
 
@@ -44,7 +46,7 @@ Every function that takes a seed accepts a bytearray or bytes of thirty two byte
 A Client opened for a plain url with no network signs only for a private chain. It refuses the public testnet and any `Q-main-net-` chain until you name the network, with `Network.testnet()` or a mainnet network and `acknowledge_mainnet=True`. An expected nonce you pass must be the nonce the gateway reports, because the chain admits only the next nonce of an account. A rejected submission, or one whose validity deadline has passed, frees its nonce for the next send.
 
 ```python
-import qcore
+import quantova_qcore as qcore
 
 client = qcore.Client(qcore.Network.testnet())
 seed = qcore.generate_seed()
@@ -80,7 +82,7 @@ status = client.transaction(signed["tx_id"])
 A call to a contract can carry a value in Quon alongside its arguments, and every payable call must name the chain it signs for so the signature can never be replayed onto another network. Read the chain id from the node you mean to reach rather than assuming one. The nonce comes from the account. The validity deadline is the height after which the chain drops the transaction, and a deadline of zero, which would never expire, is refused. A call pays one transfer fee for every started 1210 units of its meter limit, so the raw call signers take the transfer fee the node reports and refuse a fee below `vm_call_fee(transfer_fee, meter_limit)`, a meter limit outside 1210 to 12500000, or call arguments above 128 KiB.
 
 ```python
-import qcore
+import quantova_qcore as qcore
 
 client = qcore.Client(qcore.Network.testnet())
 seed = qcore.generate_seed()

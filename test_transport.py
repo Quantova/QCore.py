@@ -8,10 +8,10 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 try:
-    import qcore
+    import quantova_qcore as qcore
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
-    import qcore
+    import quantova_qcore as qcore
 
 def redirect_to_plaintext_is_refused():
     class Redirector(BaseHTTPRequestHandler):
@@ -58,7 +58,7 @@ def an_environment_proxy_is_ignored():
     probe = (
         "import os, sys\n"
         "sys.path.append(os.path.join(sys.argv[1], 'python'))\n"
-        "import qcore\n"
+        "import quantova_qcore as qcore\n"
         "print(qcore.Client(sys.argv[2]).node_info()['chain_id'])\n"
     )
     here = os.path.dirname(os.path.abspath(__file__))

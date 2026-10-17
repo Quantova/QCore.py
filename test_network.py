@@ -5,12 +5,12 @@ import os
 import sys
 
 try:
-    import qcore
+    import quantova_qcore as qcore
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
-    import qcore
+    import quantova_qcore as qcore
 
-from qcore import Client, Network
+from quantova_qcore import Client, Network
 
 failures = 0
 

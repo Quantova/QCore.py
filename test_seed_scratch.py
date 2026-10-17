@@ -5,10 +5,10 @@ import os
 import sys
 
 try:
-    import qcore
+    import quantova_qcore as qcore
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
-    import qcore
+    import quantova_qcore as qcore
 
 def main():
     seed = bytes.fromhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
@@ -22,7 +22,12 @@ def main():
     second = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310)
     assert first == second, "signing stays deterministic after the seed routes through wiped scratch"
 
-    phrase = qcore.mnemonic_from_seed(seed)
+    phrase_bytes = qcore.mnemonic_from_seed(seed)
+    assert isinstance(phrase_bytes, bytearray), "the phrase is returned as a bytearray the caller can wipe"
+    phrase = qcore.mnemonic_from_seed_text(seed)
+    assert phrase_bytes.decode() == phrase, "the byte and text phrases carry the same words"
+    assert qcore.seed_from_mnemonic(phrase_bytes) == seed, "a phrase passed as bytes restores the same seed"
+    phrase_bytes[:] = bytes(len(phrase_bytes))
     messy = "  " + "   ".join(phrase.upper().split(" ")) + "\n"
     assert qcore.seed_from_mnemonic(messy) == seed, "case and spacing do not change the restored seed"
     wide = "".join(chr(ord(c) - 97 + 0xFF41) if "a" <= c <= "z" else c for c in phrase)

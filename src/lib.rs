@@ -1,7 +1,7 @@
 // Copyright 2026 Quantova Inc
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyByteArray, PyBytes, PyString};
 use qtv_wipe::Zeroizing;
@@ -52,15 +52,268 @@ fn lookalike_of(candidate: &str, known: Vec<String>) -> Option<String> {
 fn mnemonic_from_seed<'py>(
     py: Python<'py>,
     seed_bytes: &Bound<'_, PyAny>,
+) -> PyResult<Bound<'py, PyByteArray>> {
+    let phrase = qcore::mnemonic_bytes_from_seed(&*seed(seed_bytes)?);
+    Ok(PyByteArray::new(py, &phrase))
+}
+
+#[pyfunction]
+fn mnemonic_from_seed_text<'py>(
+    py: Python<'py>,
+    seed_bytes: &Bound<'_, PyAny>,
 ) -> PyResult<Bound<'py, PyString>> {
     let phrase = qcore::mnemonic_from_seed(&*seed(seed_bytes)?);
     Ok(PyString::new(py, &phrase))
 }
 
 #[pyfunction]
-fn seed_from_mnemonic<'py>(py: Python<'py>, phrase: &str) -> PyResult<Bound<'py, PyByteArray>> {
-    let seed = qcore::seed_from_mnemonic(phrase).map_err(PyValueError::new_err)?;
+fn seed_from_mnemonic<'py>(
+    py: Python<'py>,
+    phrase: &Bound<'_, PyAny>,
+) -> PyResult<Bound<'py, PyByteArray>> {
+    let seed = if let Ok(text) = phrase.cast::<PyString>() {
+        let owned = Zeroizing::new(text.to_cow()?.into_owned());
+        qcore::seed_from_mnemonic(&owned)
+    } else if let Ok(bytes) = phrase.cast::<PyBytes>() {
+        qcore::seed_from_mnemonic_bytes(bytes.as_bytes())
+    } else if let Ok(array) = phrase.cast::<PyByteArray>() {
+        let copied = Zeroizing::new(array.to_vec());
+        qcore::seed_from_mnemonic_bytes(&copied)
+    } else {
+        return Err(PyValueError::new_err(
+            "the recovery phrase must be a str, bytes or bytearray",
+        ));
+    }
+    .map_err(PyValueError::new_err)?;
     Ok(PyByteArray::new(py, &seed[..]))
+}
+
+#[pyfunction]
+fn genesis_secs(chain_name: &str) -> u64 {
+    qcore::genesis_secs(chain_name)
+}
+
+#[pyfunction]
+fn head_ceiling(chain_name: &str, wall_secs: u64) -> u64 {
+    qcore::head_ceiling(chain_name, wall_secs)
+}
+
+#[pyfunction]
+#[pyo3(signature = (chain_name, head, wall_secs, floor, floor_age_secs))]
+fn bounded_valid_until(
+    chain_name: &str,
+    head: u64,
+    wall_secs: u64,
+    floor: Option<u64>,
+    floor_age_secs: u64,
+) -> PyResult<u64> {
+    qcore::bounded_valid_until(chain_name, head, wall_secs, floor, floor_age_secs)
+        .map_err(PyValueError::new_err)
+}
+
+#[pyfunction]
+fn check_gateway_json(response: &str) -> PyResult<()> {
+    qcore::check_gateway_json(response).map_err(PyValueError::new_err)
+}
+
+#[pyfunction]
+fn testnet_rpc_url() -> &'static str {
+    qcore::TESTNET_RPC_URL
+}
+
+#[pyfunction]
+fn testnet_chain_name() -> &'static str {
+    qcore::TESTNET_CHAIN_NAME
+}
+
+#[pyfunction]
+fn validity_blocks() -> u64 {
+    qcore::DEFAULT_VALIDITY_BLOCKS
+}
+
+#[pyclass(name = "SigningSession")]
+struct SigningSession(qcore::SigningSession);
+
+#[pymethods]
+impl SigningSession {
+    #[new]
+    #[pyo3(signature = (book = Vec::new()))]
+    fn new(book: Vec<String>) -> PyResult<SigningSession> {
+        qcore::SigningSession::with_address_book(&book)
+            .map(SigningSession)
+            .map_err(PyValueError::new_err)
+    }
+
+    fn remember_address(&mut self, address: &str) {
+        self.0.remember_address(address)
+    }
+
+    fn check_target(&self, address: &str) -> PyResult<()> {
+        self.0.check_target(address).map_err(PyValueError::new_err)
+    }
+
+    #[pyo3(signature = (key, reported, expected, order))]
+    fn slot(
+        &mut self,
+        key: &str,
+        reported: u64,
+        expected: Option<u64>,
+        order: bool,
+    ) -> PyResult<u64> {
+        self.0
+            .slot(key, reported, expected, order)
+            .map_err(PyRuntimeError::new_err)
+    }
+
+    fn signed(&mut self, key: &str, slot: u64) {
+        self.0.signed(key, slot)
+    }
+
+    fn outcome(&mut self, key: &str, slot: u64, accepted: bool) {
+        self.0.outcome(key, slot, accepted)
+    }
+
+    fn next_nonce(&self, key: &str) -> Option<u64> {
+        self.0.next_nonce(key)
+    }
+
+    fn is_held(&self, key: &str, slot: u64) -> bool {
+        self.0.is_held(key, slot)
+    }
+}
+
+fn addr32(hex: &str) -> PyResult<[u8; 32]> {
+    qcore::json::from_hex(hex)
+        .map_err(PyValueError::new_err)?
+        .try_into()
+        .map_err(|_| PyValueError::new_err("expected 32 bytes of hex"))
+}
+
+#[pyfunction]
+fn order_signer(seed_bytes: &Bound<'_, PyAny>, index: u64) -> PyResult<String> {
+    Ok(qcore::json::to_hex(&qcore::contract::order_signer(
+        &*seed(seed_bytes)?,
+        index,
+    )))
+}
+
+#[pyfunction]
+fn vm_deploy_address() -> String {
+    qcore::vm_deploy_address()
+}
+
+#[pyfunction]
+fn contract_address(deployer: &str, nonce: u64) -> Option<String> {
+    qcore::contract_address(deployer, nonce)
+}
+
+#[pyfunction]
+fn nonce_slot_key(signer_hex: &str) -> PyResult<String> {
+    Ok(qcore::json::to_hex(&qcore::contract::nonce_slot_key(
+        &addr32(signer_hex)?,
+    )))
+}
+
+#[pyfunction]
+fn scalar_slot_key(slot: u64) -> String {
+    qcore::json::to_hex(&qcore::contract::scalar_slot_key(slot))
+}
+
+#[pyfunction]
+fn map_slot_key(map_domain_tag: u64, key_address_hex: &str) -> PyResult<String> {
+    Ok(qcore::json::to_hex(&qcore::contract::map_slot_key(
+        map_domain_tag,
+        &addr32(key_address_hex)?,
+    )))
+}
+
+#[pyfunction]
+fn map_addr_word_key(map_domain_tag: u64, key32_hex: &str, word: u64) -> PyResult<String> {
+    Ok(qcore::json::to_hex(&qcore::contract::map_addr_word_key(
+        map_domain_tag,
+        &addr32(key32_hex)?,
+        word,
+    )))
+}
+
+#[pyfunction]
+fn name_key(label: &str) -> String {
+    qcore::json::to_hex(&qcore::contract::name_key(label))
+}
+
+#[pyfunction]
+fn token_decimals_slot() -> u64 {
+    qcore::contract::TOKEN_DECIMALS_SLOT
+}
+
+#[pyfunction]
+fn token_symbol_slot() -> u64 {
+    qcore::contract::TOKEN_SYMBOL_SLOT
+}
+
+#[pyfunction]
+fn pack_symbol(symbol: &str) -> u64 {
+    qcore::contract::pack_symbol(symbol)
+}
+
+#[pyfunction]
+fn unpack_symbol(word: u64) -> String {
+    qcore::contract::unpack_symbol(word)
+}
+
+#[pyfunction]
+fn storage_body(contract: &str) -> String {
+    qcore::contract::storage_body(contract)
+}
+
+#[pyfunction]
+fn events_body(height: u64) -> String {
+    qcore::contract::events_body(height)
+}
+
+#[pyfunction]
+fn asset_balance_body(issuer: &str, holder: &str) -> String {
+    qcore::contract::asset_balance_body(issuer, holder)
+}
+
+#[pyfunction]
+fn asset_supply_body(issuer: &str) -> String {
+    qcore::contract::asset_supply_body(issuer)
+}
+
+#[pyfunction]
+fn storage_value(response: &str, slot_key_hex: &str) -> PyResult<u64> {
+    let slots = qcore::contract::parse_storage(response).map_err(PyValueError::new_err)?;
+    Ok(qcore::contract::storage_value(
+        &slots,
+        &addr32(slot_key_hex)?,
+    ))
+}
+
+#[pyfunction]
+fn parse_events(response: &str) -> PyResult<String> {
+    let events = qcore::contract::parse_events(response).map_err(PyValueError::new_err)?;
+    let items: Vec<qcore::json::Json> = events
+        .iter()
+        .map(|event| {
+            let mut fields = vec![
+                ("contract", qcore::json::Json::str(event.contract.clone())),
+                (
+                    "selector",
+                    qcore::json::Json::str(qcore::json::to_hex(&event.selector)),
+                ),
+                (
+                    "data",
+                    qcore::json::Json::str(qcore::json::to_hex(&event.data)),
+                ),
+            ];
+            if let Some(word) = qcore::contract::event_word(&event.data) {
+                fields.push(("value", qcore::json::Json::str(word.to_string())));
+            }
+            qcore::json::object(fields)
+        })
+        .collect();
+    Ok(qcore::json::Json::Array(items).render())
 }
 
 #[pyfunction]
@@ -351,11 +604,13 @@ fn build_typed_order_call(
     selector_hex: &str,
     scheme_off: u64,
     ptr_off: u64,
+    expiry_off: u64,
     region_off: u64,
     fields_json: &str,
     owner_seed_bytes: &Bound<'_, PyAny>,
     owner_index: u64,
     nonce: u64,
+    expiry: u64,
 ) -> PyResult<String> {
     let selector: [u8; 4] = qcore::json::from_hex(selector_hex)
         .map_err(PyValueError::new_err)?
@@ -368,11 +623,13 @@ fn build_typed_order_call(
         selector,
         scheme_off,
         ptr_off,
+        expiry_off,
         region_off,
         &fields,
         &*seed(owner_seed_bytes)?,
         owner_index,
         nonce,
+        expiry,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -397,6 +654,7 @@ fn build_typed_order_call(
             qcore::json::Json::str(qcore::json::to_hex(&order.signer)),
         ),
         ("nonce", qcore::json::Json::Int(order.nonce)),
+        ("expiry", qcore::json::Json::Int(order.expiry)),
     ])
     .render())
 }
@@ -408,6 +666,33 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(same_address, m)?)?;
     m.add_function(wrap_pyfunction!(lookalike_of, m)?)?;
     m.add_function(wrap_pyfunction!(mnemonic_from_seed, m)?)?;
+    m.add_function(wrap_pyfunction!(mnemonic_from_seed_text, m)?)?;
+    m.add_function(wrap_pyfunction!(genesis_secs, m)?)?;
+    m.add_function(wrap_pyfunction!(head_ceiling, m)?)?;
+    m.add_function(wrap_pyfunction!(bounded_valid_until, m)?)?;
+    m.add_function(wrap_pyfunction!(check_gateway_json, m)?)?;
+    m.add_function(wrap_pyfunction!(testnet_rpc_url, m)?)?;
+    m.add_function(wrap_pyfunction!(testnet_chain_name, m)?)?;
+    m.add_function(wrap_pyfunction!(validity_blocks, m)?)?;
+    m.add_class::<SigningSession>()?;
+    m.add_function(wrap_pyfunction!(order_signer, m)?)?;
+    m.add_function(wrap_pyfunction!(vm_deploy_address, m)?)?;
+    m.add_function(wrap_pyfunction!(contract_address, m)?)?;
+    m.add_function(wrap_pyfunction!(nonce_slot_key, m)?)?;
+    m.add_function(wrap_pyfunction!(scalar_slot_key, m)?)?;
+    m.add_function(wrap_pyfunction!(map_slot_key, m)?)?;
+    m.add_function(wrap_pyfunction!(map_addr_word_key, m)?)?;
+    m.add_function(wrap_pyfunction!(name_key, m)?)?;
+    m.add_function(wrap_pyfunction!(token_decimals_slot, m)?)?;
+    m.add_function(wrap_pyfunction!(token_symbol_slot, m)?)?;
+    m.add_function(wrap_pyfunction!(pack_symbol, m)?)?;
+    m.add_function(wrap_pyfunction!(unpack_symbol, m)?)?;
+    m.add_function(wrap_pyfunction!(storage_body, m)?)?;
+    m.add_function(wrap_pyfunction!(events_body, m)?)?;
+    m.add_function(wrap_pyfunction!(asset_balance_body, m)?)?;
+    m.add_function(wrap_pyfunction!(asset_supply_body, m)?)?;
+    m.add_function(wrap_pyfunction!(storage_value, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_events, m)?)?;
     m.add_function(wrap_pyfunction!(seed_from_mnemonic, m)?)?;
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;
     m.add_function(wrap_pyfunction!(sign_call, m)?)?;

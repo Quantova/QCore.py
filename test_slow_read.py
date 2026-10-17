@@ -8,10 +8,10 @@ import threading
 import time
 
 try:
-    import qcore
+    import quantova_qcore as qcore
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
-    import qcore
+    import quantova_qcore as qcore
 
 def dribbler(status):
     srv = socket.socket()

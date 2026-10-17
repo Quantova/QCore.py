@@ -8,10 +8,10 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 try:
-    import qcore
+    import quantova_qcore as qcore
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
-    import qcore
+    import quantova_qcore as qcore
 
 state = {"fee": "100", "submitted": 0, "last_tx": None, "asked_account": None, "nonce": 0}
 

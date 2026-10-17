@@ -8,10 +8,10 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 try:
-    import qcore
+    import quantova_qcore as qcore
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
-    import qcore
+    import quantova_qcore as qcore
 
 state = {"nonce": 0, "submitted": 0, "head": 10, "verdict": "accepted"}
 
@@ -53,15 +53,23 @@ def fail(message):
     sys.exit(1)
 
 def main():
-    for bad in (1.5, 4.9, 2.0, -1, 2 ** 64, "1.5", True):
+    for bad in (1.5, 4.9, 2.0, -1, 2 ** 64, "1.5", "5", " 5", "+5", "5_0", "\u0665", True):
         try:
-            qcore._account_nonce(bad)
+            qcore._gateway_integer(bad, "nonce")
             fail(f"a bad nonce {bad!r} was accepted")
         except RuntimeError:
             pass
-    for good, expected in ((5, 5), ("5", 5), (2 ** 64 - 1, 2 ** 64 - 1), (9007199254740993, 9007199254740993)):
-        if qcore._account_nonce(good) != expected:
+    for good, expected in ((5, 5), (2 ** 64 - 1, 2 ** 64 - 1), (9007199254740993, 9007199254740993)):
+        if qcore._gateway_integer(good, "nonce") != expected:
             fail(f"a good nonce {good!r} was not accepted exactly")
+    for bad in ("+500", " 500", "500 ", "5_00", "\u0665\u0660\u0660", "", 500, None):
+        try:
+            qcore._transfer_fee({"fee": {"transfer_quon": bad}})
+            fail(f"a bad transfer fee {bad!r} was accepted")
+        except RuntimeError:
+            pass
+    if qcore._transfer_fee({"fee": {"transfer_quon": "500"}}) != 500:
+        fail("a plain digit transfer fee was not accepted")
 
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -126,7 +134,13 @@ def main():
     stuck = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
     state["nonce"] = 3
     stuck.transfer(seed, 0, to, "1000", "1000000")
-    signed, _ = stuck.transfer(seed, 0, to, "1000", "1000000")
+    try:
+        stuck.transfer(seed, 0, to, "1000", "1000000")
+        fail("a second signature at a held nonce was produced without the caller naming it")
+    except RuntimeError as err:
+        if "already signed" not in str(err):
+            fail("unclear held nonce error: " + str(err))
+    signed, _ = stuck.transfer(seed, 0, to, "1000", "1000000", expected_nonce=3)
     again = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 3, 500, chain_id, 310))
     if signed["tx_hex"] != again["tx_hex"]:
         fail("a submission that never landed pushed the next one past the nonce the chain admits")
@@ -135,7 +149,7 @@ def main():
     at_nine = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 9, 500, chain_id, 310))
     if signed["tx_hex"] != at_nine["tx_hex"]:
         fail("a gateway nonce above the local one must be signed at, not refused")
-    if stuck._next_nonces.get(signed["from"]) != 10:
+    if stuck._session.next_nonce(signed["from"]) != 10:
         fail("the local next nonce did not follow the highest nonce seen")
 
     retry = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
@@ -168,12 +182,24 @@ def main():
     except RuntimeError as err:
         if "already signed" not in str(err):
             fail("unclear held nonce error: " + str(err))
-    for held in retry._signed_nonces.values():
-        for slot, (tx_hex, deadline, signed_at) in list(held.items()):
-            held[slot] = (tx_hex, deadline, signed_at - 15)
+    state["nonce"] = 4
     _, outcome = retry.transfer(seed, 0, to, "4", "1000000")
     if outcome["verdict"] != "accepted":
-        fail("a held nonce whose deadline has passed was not freed")
+        fail("a nonce the gateway reports past an accepted send was not signed")
+    state["verdict"] = "rejected"
+    state["nonce"] = 5
+    retry.transfer(seed, 0, to, "5", "1000000")
+    state["verdict"] = "accepted"
+    state["nonce"] = 6
+    try:
+        retry.transfer(seed, 0, to, "5", "1000000")
+        fail("a gateway that rejected a send and then reported the next nonce got a second signature")
+    except RuntimeError as err:
+        if "was not accepted" not in str(err):
+            fail("unclear skipped nonce error: " + str(err))
+    _, outcome = retry.transfer(seed, 0, to, "5", "1000000", expected_nonce=6)
+    if outcome["verdict"] != "accepted":
+        fail("naming the nonce did not let the caller vouch for the earlier send")
     state["head"] = 10
 
     state["anonymous"] = True

@@ -1,11 +1,12 @@
 # Copyright 2026 Quantova Inc
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import sys, time, qcore
+import sys, time
+import quantova_qcore as qcore
 
 url = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8645"
 client = qcore.Client(url)
-seed = "0b" * 32
+seed = bytearray.fromhex("0b" * 32)
 
 info = client.node_info()
 print("network", info["chain_id"], "fee", info["fee"]["transfer_quon"], info["denomination"])
