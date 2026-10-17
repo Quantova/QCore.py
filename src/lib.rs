@@ -291,6 +291,20 @@ fn storage_value(response: &str, slot_key_hex: &str) -> PyResult<u64> {
 }
 
 #[pyfunction]
+fn storage_value_reported(response: &str, slot_key_hex: &str) -> PyResult<Option<u64>> {
+    let slots = qcore::contract::parse_storage(response).map_err(PyValueError::new_err)?;
+    Ok(qcore::contract::storage_value_reported(
+        &slots,
+        &addr32(slot_key_hex)?,
+    ))
+}
+
+#[pyfunction]
+fn check_order_expiry(expiry: u64, now_secs: u64) -> PyResult<()> {
+    qcore::contract::check_order_expiry(expiry, now_secs).map_err(PyValueError::new_err)
+}
+
+#[pyfunction]
 fn parse_events(response: &str) -> PyResult<String> {
     let events = qcore::contract::parse_events(response).map_err(PyValueError::new_err)?;
     let items: Vec<qcore::json::Json> = events
@@ -872,6 +886,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(asset_balance_body, m)?)?;
     m.add_function(wrap_pyfunction!(asset_supply_body, m)?)?;
     m.add_function(wrap_pyfunction!(storage_value, m)?)?;
+    m.add_function(wrap_pyfunction!(storage_value_reported, m)?)?;
+    m.add_function(wrap_pyfunction!(check_order_expiry, m)?)?;
     m.add_function(wrap_pyfunction!(parse_events, m)?)?;
     m.add_function(wrap_pyfunction!(seed_from_mnemonic, m)?)?;
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;

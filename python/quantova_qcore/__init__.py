@@ -66,6 +66,8 @@ from ._native import (
     asset_balance_body,
     asset_supply_body,
     storage_value,
+    storage_value_reported,
+    check_order_expiry,
     parse_events,
 )
 
@@ -134,6 +136,8 @@ __all__ = [
     "asset_balance_body",
     "asset_supply_body",
     "storage_value",
+    "storage_value_reported",
+    "check_order_expiry",
     "parse_events",
 ]
 
@@ -495,7 +499,10 @@ class Client:
 
     def _slot_value(self, contract, key):
         resp = self._call("get_storage_at", json.dumps({"address": contract, "keys": [key]}), strict=True)
-        return storage_value(json.dumps(resp), key)
+        value = storage_value_reported(json.dumps(resp), key)
+        if value is None:
+            raise ValueError("the gateway did not report the requested storage slot")
+        return value
 
     def contract_nonce(self, contract, signer_hex):
         return self._slot_value(contract, nonce_slot_key(signer_hex))
