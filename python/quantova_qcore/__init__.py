@@ -412,7 +412,7 @@ class Client:
                 raw = _read_bounded(res)
                 if res.status != 200:
                     raise RuntimeError(f"status {res.status}")
-                return _strict_loads(raw) if strict else _loads(_decode(raw))
+                return _strict_loads(raw)
         except urllib.error.HTTPError as err:
             data = _loads(_decode(_read_bounded(err)))
             message = data.get("message") or data.get("error") if isinstance(data, dict) else None
