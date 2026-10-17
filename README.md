@@ -33,7 +33,9 @@ seed = qcore.generate_seed()             # thirty two random bytes in a bytearra
 phrase = qcore.mnemonic_from_seed(seed)  # the only backup, shown once and kept on the device
 ```
 
-`qcore.seed_from_mnemonic(phrase)` restores the seed from the twenty five words as a bytearray. It ignores case and extra spacing and applies Unicode NFKD before it looks a word up, so a phrase pasted with capitals, non breaking spaces, or full width letters restores the same seed. A standard BIP-39 phrase from another wallet is refused with its own error, since a Quantova phrase carries a SHA3 checksum and cannot be restored from it.
+`qcore.seed_from_mnemonic(phrase)` restores the seed from the twenty five words as a bytearray. It ignores case and extra spacing and folds full width and other compatibility letters through a fixed table before it looks a word up, so a phrase pasted with capitals, non breaking spaces, or full width letters restores the same seed. A standard BIP-39 phrase from another wallet is refused with its own error, since a Quantova phrase carries a SHA3 checksum and cannot be restored from it.
+
+`Client.call`, `Client.payable_call` and `Client.asset_call` sign a contract call, a call that moves Quon and a call that moves an issued asset, each bounded by the fee ceiling you pass.
 
 Every function that takes a seed accepts a bytearray or bytes of thirty two bytes and refuses a hex string. Keep the seed in a bytearray and wipe it with `seed[:] = bytes(32)` when you are done, and never print or log any part of it. The native extension wipes its own copy of a seed before it frees it.
 

@@ -21,6 +21,7 @@ from ._native import (
     sign_transfer,
     sign_call,
     sign_payable_call,
+    sign_asset_call,
     sign_register,
     build_typed_order_call,
     vm_call_fee,
@@ -57,6 +58,7 @@ __all__ = [
     "sign_transfer",
     "sign_call",
     "sign_payable_call",
+    "sign_asset_call",
     "sign_register",
     "build_typed_order_call",
     "vm_call_fee",
@@ -495,3 +497,56 @@ class Client:
         outcome = self.submit(signed["tx_hex"])
         self._remember(sender, nonce, outcome)
         return signed, outcome
+
+    def _signed_call(self, seed_hex, index, meter_limit, max_fee, expected_nonce, sign):
+        ceiling = _fee_ceiling(max_fee)
+        meter = _whole(meter_limit, "the meter limit must be a whole number")
+        info = self.node_info()
+        self._guard_mainnet()
+        chain_id = self._signing_chain_id(info)
+        transfer_fee = int(_transfer_fee(info))
+        fee = vm_call_fee(transfer_fee, meter)
+        if fee > ceiling:
+            raise ValueError(
+                f"the fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
+            )
+        until = self._validity(info)
+        sender = address(seed_hex, index)
+        acct = self.account(sender)
+        nonce = acct.get("nonce") if isinstance(acct, dict) else None
+        if nonce is None:
+            raise RuntimeError("the gateway did not report a nonce")
+        nonce = self._checked_nonce(nonce, expected_nonce, sender)
+        signed = _loads(sign(nonce, meter, fee, chain_id, until, transfer_fee))
+        self._guard_signed(sender, nonce, signed["tx_hex"], until, expected_nonce is not None)
+        outcome = self.submit(signed["tx_hex"])
+        self._remember(sender, nonce, outcome)
+        return signed, outcome
+
+    def payable_call(self, seed_hex, index, target, args_hex, value, meter_limit, max_fee, expected_nonce=None):
+        if not valid_address(target):
+            raise ValueError("the target is not a Q1 address")
+        _check_amount(value)
+        amount = _whole(value, "the value must be an integer number of Quon")
+        return self._signed_call(
+            seed_hex, index, meter_limit, max_fee, expected_nonce,
+            lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_payable_call(
+                seed_hex, index, target, args_hex, nonce, meter, fee, amount, chain_id, until,
+                transfer_fee,
+            ),
+        )
+
+    def asset_call(self, seed_hex, index, target, args_hex, asset_issuer, amount, meter_limit, max_fee, expected_nonce=None):
+        if not valid_address(target):
+            raise ValueError("the target is not a Q1 address")
+        if not valid_address(asset_issuer):
+            raise ValueError("the asset issuer is not a Q1 address")
+        _check_amount(amount)
+        moved = _whole(amount, "the amount must be an integer number of Quon")
+        return self._signed_call(
+            seed_hex, index, meter_limit, max_fee, expected_nonce,
+            lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_asset_call(
+                seed_hex, index, target, args_hex, asset_issuer, moved, nonce, meter, fee,
+                chain_id, until, transfer_fee,
+            ),
+        )

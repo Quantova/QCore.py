@@ -187,6 +187,49 @@ fn sign_payable_call(
 }
 
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn sign_asset_call(
+    seed_bytes: &Bound<'_, PyAny>,
+    index: u64,
+    target: &str,
+    args_hex: &str,
+    asset_issuer: &str,
+    amount: u64,
+    nonce: u64,
+    meter_limit: u64,
+    fee: u128,
+    chain_id: u64,
+    valid_until: u64,
+    transfer_fee: u128,
+) -> PyResult<String> {
+    let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
+    let signed = qcore::sign_asset_call(
+        &*seed(seed_bytes)?,
+        index,
+        target,
+        args,
+        asset_issuer,
+        amount,
+        nonce,
+        meter_limit,
+        fee,
+        chain_id,
+        valid_until,
+        transfer_fee,
+    )
+    .map_err(PyValueError::new_err)?;
+    Ok(qcore::json::object(vec![
+        ("from", qcore::json::Json::str(signed.from)),
+        ("tx_id", qcore::json::Json::str(signed.tx_id)),
+        (
+            "tx_hex",
+            qcore::json::Json::str(qcore::json::to_hex(&signed.tx_bytes)),
+        ),
+    ])
+    .render())
+}
+
+#[pyfunction]
 fn sign_register(
     seed_bytes: &Bound<'_, PyAny>,
     index: u64,
@@ -369,6 +412,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;
     m.add_function(wrap_pyfunction!(sign_call, m)?)?;
     m.add_function(wrap_pyfunction!(sign_payable_call, m)?)?;
+    m.add_function(wrap_pyfunction!(sign_asset_call, m)?)?;
     m.add_function(wrap_pyfunction!(sign_register, m)?)?;
     m.add_function(wrap_pyfunction!(build_typed_order_call, m)?)?;
     m.add_function(wrap_pyfunction!(vm_call_fee, m)?)?;
