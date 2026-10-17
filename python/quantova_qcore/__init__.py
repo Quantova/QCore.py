@@ -7,6 +7,7 @@ import ipaddress
 import json
 import secrets
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -27,6 +28,10 @@ from ._native import (
     sign_asset_call,
     sign_register,
     build_typed_order_call,
+    order_layout_hash,
+    verify_finality,
+    verify_event,
+    decode_event,
     vm_call_fee,
     check_valid_until,
     chain_id_from_name,
@@ -91,6 +96,10 @@ __all__ = [
     "sign_asset_call",
     "sign_register",
     "build_typed_order_call",
+    "order_layout_hash",
+    "verify_finality",
+    "verify_event",
+    "decode_event",
     "vm_call_fee",
     "check_valid_until",
     "chain_id_from_name",
@@ -333,6 +342,16 @@ class Client:
         self._pinned_chain = self.network.chain_id if self.network else None
         self._head_floor = None
         self._session = SigningSession([str(a) for a in (address_book or [])])
+        self._locks = {}
+        self._locks_guard = threading.Lock()
+
+    def _sender_lock(self, sender):
+        with self._locks_guard:
+            lock = self._locks.get(sender)
+            if lock is None:
+                lock = threading.Lock()
+                self._locks[sender] = lock
+            return lock
 
     def _guard_mainnet(self):
         on_mainnet = self.network is not None and self.network.is_mainnet
@@ -503,57 +522,60 @@ class Client:
         _check_amount(amount)
         ceiling = _fee_ceiling(max_fee)
         sender = address(seed, index)
-        self._vet(sender, [to])
-        info = self.node_info()
-        self._guard_mainnet()
-        chain_id = self._signing_chain_id(info)
-        fee = _transfer_fee(info)
-        if fee > ceiling:
-            raise ValueError(
-                f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
+        with self._sender_lock(sender):
+            self._vet(sender, [to])
+            info = self.node_info()
+            self._guard_mainnet()
+            chain_id = self._signing_chain_id(info)
+            fee = _transfer_fee(info)
+            if fee > ceiling:
+                raise ValueError(
+                    f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
+                )
+            until = self._validity(info)
+            nonce = self._account_slot(sender, expected_nonce)
+            signed = _loads(
+                sign_transfer(seed, index, to, _whole(amount, "the amount must be an integer number of Quon"), nonce, fee, chain_id, until)
             )
-        until = self._validity(info)
-        nonce = self._account_slot(sender, expected_nonce)
-        signed = _loads(
-            sign_transfer(seed, index, to, _whole(amount, "the amount must be an integer number of Quon"), nonce, fee, chain_id, until)
-        )
-        self._remember_targets([to])
-        outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
-        return signed, outcome
+            self._remember_targets([to])
+            outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
+            return signed, outcome
 
     def register(self, seed, index, max_fee, expected_nonce=None):
         ceiling = _fee_ceiling(max_fee)
         sender = address(seed, index)
-        self._vet(sender, [])
-        info = self.node_info()
-        self._guard_mainnet()
-        chain_id = self._signing_chain_id(info)
-        fee = _transfer_fee(info)
-        if fee > ceiling:
-            raise ValueError(
-                f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
-            )
-        until = self._validity(info)
-        nonce = self._account_slot(sender, expected_nonce)
-        signed = _loads(sign_register(seed, index, nonce, fee, chain_id, until))
-        outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
-        return signed, outcome
+        with self._sender_lock(sender):
+            self._vet(sender, [])
+            info = self.node_info()
+            self._guard_mainnet()
+            chain_id = self._signing_chain_id(info)
+            fee = _transfer_fee(info)
+            if fee > ceiling:
+                raise ValueError(
+                    f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
+                )
+            until = self._validity(info)
+            nonce = self._account_slot(sender, expected_nonce)
+            signed = _loads(sign_register(seed, index, nonce, fee, chain_id, until))
+            outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
+            return signed, outcome
 
     def _signed_call(self, seed, index, targets, meter_limit, max_fee, expected_nonce, sign):
         ceiling = _fee_ceiling(max_fee)
         meter = _whole(meter_limit, "the meter limit must be a whole number")
         sender = address(seed, index)
-        self._vet(sender, targets)
-        info = self.node_info()
-        self._guard_mainnet()
-        chain_id = self._signing_chain_id(info)
-        transfer_fee, fee = self._call_fee(info, meter, ceiling, max_fee)
-        until = self._validity(info)
-        nonce = self._account_slot(sender, expected_nonce)
-        signed = _loads(sign(nonce, meter, fee, chain_id, until, transfer_fee))
-        self._remember_targets(targets)
-        outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
-        return signed, outcome
+        with self._sender_lock(sender):
+            self._vet(sender, targets)
+            info = self.node_info()
+            self._guard_mainnet()
+            chain_id = self._signing_chain_id(info)
+            transfer_fee, fee = self._call_fee(info, meter, ceiling, max_fee)
+            until = self._validity(info)
+            nonce = self._account_slot(sender, expected_nonce)
+            signed = _loads(sign(nonce, meter, fee, chain_id, until, transfer_fee))
+            self._remember_targets(targets)
+            outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
+            return signed, outcome
 
     def call(self, seed, index, target, args_hex, meter_limit, max_fee, expected_nonce=None):
         if not valid_address(target):
