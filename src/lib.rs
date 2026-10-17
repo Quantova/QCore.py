@@ -64,15 +64,6 @@ fn seed_from_mnemonic<'py>(py: Python<'py>, phrase: &str) -> PyResult<Bound<'py,
 }
 
 #[pyfunction]
-fn seed_from_legacy_mnemonic<'py>(
-    py: Python<'py>,
-    phrase: &str,
-) -> PyResult<Bound<'py, PyByteArray>> {
-    let seed = qcore::seed_from_legacy_mnemonic(phrase).map_err(PyValueError::new_err)?;
-    Ok(PyByteArray::new(py, &seed[..]))
-}
-
-#[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn sign_transfer(
     seed_bytes: &Bound<'_, PyAny>,
@@ -375,7 +366,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lookalike_of, m)?)?;
     m.add_function(wrap_pyfunction!(mnemonic_from_seed, m)?)?;
     m.add_function(wrap_pyfunction!(seed_from_mnemonic, m)?)?;
-    m.add_function(wrap_pyfunction!(seed_from_legacy_mnemonic, m)?)?;
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;
     m.add_function(wrap_pyfunction!(sign_call, m)?)?;
     m.add_function(wrap_pyfunction!(sign_payable_call, m)?)?;

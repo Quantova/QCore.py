@@ -35,8 +35,6 @@ phrase = qcore.mnemonic_from_seed(seed)  # the only backup, shown once and kept 
 
 `qcore.seed_from_mnemonic(phrase)` restores the seed from the twenty five words as a bytearray. It ignores case and extra spacing and applies Unicode NFKD before it looks a word up, so a phrase pasted with capitals, non breaking spaces, or full width letters restores the same seed. A standard BIP-39 phrase from another wallet is refused with its own error, since a Quantova phrase carries a SHA3 checksum and cannot be restored from it.
 
-A twenty four word phrase from a release before 0.3.0 is refused by `seed_from_mnemonic` with an error that names it, and `qcore.seed_from_legacy_mnemonic(phrase)` restores it. Back up the twenty five word phrase that `mnemonic_from_seed` gives for the restored seed, since the earlier phrase carries only an eight bit checksum.
-
 Every function that takes a seed accepts a bytearray or bytes of thirty two bytes and refuses a hex string. Keep the seed in a bytearray and wipe it with `seed[:] = bytes(32)` when you are done, and never print or log any part of it. The native extension wipes its own copy of a seed before it frees it.
 
 ## Using it
