@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: Quantova/QCore.rs
-          ref: e23fd1281af1da2efb610ddf5f975be04b005960
+          ref: 52f96434057f146185e98df201174e2cd1f855e3
           path: QCore.rs
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -52,7 +52,7 @@ jobs:
         run: |
           python -m venv .venv
           . .venv/bin/activate
-          pip install --upgrade pip maturin pytest
+          pip install pip==26.2.1 maturin==1.15.0 pytest==9.1.1
           maturin develop --release --locked
           python test_conformance.py
           python test_payable_conformance.py

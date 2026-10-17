@@ -3,10 +3,21 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyString};
+use pyo3::types::{PyByteArray, PyBytes, PyString};
 use qtv_wipe::Zeroizing;
 
-fn seed(seed_bytes: &[u8]) -> PyResult<Zeroizing<[u8; 32]>> {
+fn seed(seed_bytes: &Bound<'_, PyAny>) -> PyResult<Zeroizing<[u8; 32]>> {
+    if let Ok(bytes) = seed_bytes.cast::<PyBytes>() {
+        return copy_seed(bytes.as_bytes());
+    }
+    if let Ok(array) = seed_bytes.cast::<PyByteArray>() {
+        let copied = Zeroizing::new(array.to_vec());
+        return copy_seed(&copied);
+    }
+    copy_seed(&[])
+}
+
+fn copy_seed(seed_bytes: &[u8]) -> PyResult<Zeroizing<[u8; 32]>> {
     if seed_bytes.len() != 32 {
         return Err(PyValueError::new_err(
             "a seed is 32 raw bytes (pass a bytearray you can wipe, not a hex string)",
@@ -18,7 +29,7 @@ fn seed(seed_bytes: &[u8]) -> PyResult<Zeroizing<[u8; 32]>> {
 }
 
 #[pyfunction]
-fn address(seed_bytes: &[u8], index: u64) -> PyResult<String> {
+fn address(seed_bytes: &Bound<'_, PyAny>, index: u64) -> PyResult<String> {
     Ok(qcore::account_address(&*seed(seed_bytes)?, index))
 }
 
@@ -38,21 +49,33 @@ fn lookalike_of(candidate: &str, known: Vec<String>) -> Option<String> {
 }
 
 #[pyfunction]
-fn mnemonic_from_seed<'py>(py: Python<'py>, seed_bytes: &[u8]) -> PyResult<Bound<'py, PyString>> {
+fn mnemonic_from_seed<'py>(
+    py: Python<'py>,
+    seed_bytes: &Bound<'_, PyAny>,
+) -> PyResult<Bound<'py, PyString>> {
     let phrase = qcore::mnemonic_from_seed(&*seed(seed_bytes)?);
     Ok(PyString::new(py, &phrase))
 }
 
 #[pyfunction]
-fn seed_from_mnemonic<'py>(py: Python<'py>, phrase: &str) -> PyResult<Bound<'py, PyBytes>> {
+fn seed_from_mnemonic<'py>(py: Python<'py>, phrase: &str) -> PyResult<Bound<'py, PyByteArray>> {
     let seed = qcore::seed_from_mnemonic(phrase).map_err(PyValueError::new_err)?;
-    Ok(PyBytes::new(py, &seed[..]))
+    Ok(PyByteArray::new(py, &seed[..]))
+}
+
+#[pyfunction]
+fn seed_from_legacy_mnemonic<'py>(
+    py: Python<'py>,
+    phrase: &str,
+) -> PyResult<Bound<'py, PyByteArray>> {
+    let seed = qcore::seed_from_legacy_mnemonic(phrase).map_err(PyValueError::new_err)?;
+    Ok(PyByteArray::new(py, &seed[..]))
 }
 
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn sign_transfer(
-    seed_bytes: &[u8],
+    seed_bytes: &Bound<'_, PyAny>,
     index: u64,
     to: &str,
     amount: u64,
@@ -89,7 +112,7 @@ fn sign_transfer(
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn sign_call(
-    seed_bytes: &[u8],
+    seed_bytes: &Bound<'_, PyAny>,
     index: u64,
     target: &str,
     args_hex: &str,
@@ -131,7 +154,7 @@ fn sign_call(
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn sign_payable_call(
-    seed_bytes: &[u8],
+    seed_bytes: &Bound<'_, PyAny>,
     index: u64,
     target: &str,
     args_hex: &str,
@@ -174,7 +197,7 @@ fn sign_payable_call(
 
 #[pyfunction]
 fn sign_register(
-    seed_bytes: &[u8],
+    seed_bytes: &Bound<'_, PyAny>,
     index: u64,
     nonce: u64,
     fee: u128,
@@ -296,7 +319,7 @@ fn build_typed_order_call(
     ptr_off: u64,
     region_off: u64,
     fields_json: &str,
-    owner_seed_bytes: &[u8],
+    owner_seed_bytes: &Bound<'_, PyAny>,
     owner_index: u64,
     nonce: u64,
 ) -> PyResult<String> {
@@ -352,6 +375,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lookalike_of, m)?)?;
     m.add_function(wrap_pyfunction!(mnemonic_from_seed, m)?)?;
     m.add_function(wrap_pyfunction!(seed_from_mnemonic, m)?)?;
+    m.add_function(wrap_pyfunction!(seed_from_legacy_mnemonic, m)?)?;
     m.add_function(wrap_pyfunction!(sign_transfer, m)?)?;
     m.add_function(wrap_pyfunction!(sign_call, m)?)?;
     m.add_function(wrap_pyfunction!(sign_payable_call, m)?)?;

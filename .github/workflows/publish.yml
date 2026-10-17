@@ -84,6 +84,7 @@ jobs:
           args: --release --out dist --locked
           manylinux: auto
           sccache: 'false'
+          maturin-version: v1.15.0
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: wheels-${{ matrix.runner }}-${{ matrix.target }}
@@ -150,7 +151,7 @@ jobs:
         run: |
           python -m venv .venv
           . .venv/bin/activate
-          pip install --upgrade pip maturin
+          pip install pip==26.2.1 maturin==1.15.0
           maturin develop --release --locked
           python test_conformance.py
           python test_payable_conformance.py
@@ -222,6 +223,7 @@ jobs:
           working-directory: QCore.py
           command: sdist
           args: --out dist
+          maturin-version: v1.15.0
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: wheels-sdist
@@ -230,6 +232,7 @@ jobs:
   publish:
     needs: [test, wheels, sdist]
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       id-token: write
     steps:
@@ -244,4 +247,14 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: refuse artifacts whose version is not the tag
+        run: |
+          set -euo pipefail
+          tagged="${GITHUB_REF_NAME#v}"
+          for f in dist/*; do
+            case "$(basename "$f")" in
+              quantova_qcore-"$tagged"-*.whl|quantova_qcore-"$tagged".tar.gz) ;;
+              *) echo "$(basename "$f") is not version $tagged, refusing to publish" >&2; exit 1 ;;
+            esac
+          done
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33

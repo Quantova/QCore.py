@@ -11,7 +11,7 @@ except ModuleNotFoundError:
     import qcore
 
 def main():
-    seed = "11" * 32
+    seed = bytearray(b"\x11" * 32)
     own = qcore.address(seed, 0)
     good = qcore.address(seed, 1)
 
