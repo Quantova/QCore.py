@@ -79,6 +79,8 @@ status = client.transaction(signed["tx_id"])
 
 The free signing functions such as `sign_transfer` take the validity deadline ready made and do not compare it with the chain head, so call `check_valid_until` with a head you trust first, or sign through the Client, which does this for you. A `SigningSession` reserves each nonce it hands out until it is signed, and a flow that stops early frees its nonce with `release`.
 
+`verify_finality` measures signed stake against the whole roster you pass, which matches the chain when every validator in the roster sits on the committee, as on a network of main validators. Pass exactly the validators of the block's epoch.
+
 `client.confirm_transaction(tx_id, roster)` confirms a transaction without trusting the gateway. It checks the finality certificate of the transaction's block against the validator roster you pass and trust, then checks that the transaction is inside that block.
 
 ## Sending a payable call

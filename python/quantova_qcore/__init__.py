@@ -5,7 +5,7 @@
 import importlib.metadata
 import ipaddress
 import json
-import re
+import unicodedata
 import secrets
 import ssl
 import threading
@@ -215,14 +215,39 @@ except importlib.metadata.PackageNotFoundError:
 
 _USER_AGENT = f"quantova-qcore/{_VERSION} (+https://quantova.org)"
 
-_HIDDEN = re.compile("[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]")
 _ACCOUNT_LOCKS = {}
 _ACCOUNT_LOCKS_GUARD = threading.Lock()
 
 
 def _shown(value):
-    text = _HIDDEN.sub("", str(value))
+    text = "".join(c for c in str(value) if unicodedata.category(c) not in ("Cc", "Cf", "Zl", "Zp", "Cs"))
     return text[:96] + "..." if len(text) > 96 else text
+
+
+class _AccountLock:
+    def __init__(self, key):
+        self._key = key
+        self._entry = None
+
+    def __enter__(self):
+        with _ACCOUNT_LOCKS_GUARD:
+            entry = _ACCOUNT_LOCKS.get(self._key)
+            if entry is None:
+                entry = [threading.Lock(), 0]
+                _ACCOUNT_LOCKS[self._key] = entry
+            entry[1] += 1
+        self._entry = entry
+        entry[0].acquire()
+        return self
+
+    def __exit__(self, *exc):
+        entry = self._entry
+        entry[0].release()
+        with _ACCOUNT_LOCKS_GUARD:
+            entry[1] -= 1
+            if entry[1] == 0 and _ACCOUNT_LOCKS.get(self._key) is entry:
+                del _ACCOUNT_LOCKS[self._key]
+        return False
 
 
 def _tls_context():
@@ -361,12 +386,7 @@ class Client:
         self._session = SigningSession([str(a) for a in (address_book or [])])
 
     def _sender_lock(self, sender):
-        with _ACCOUNT_LOCKS_GUARD:
-            lock = _ACCOUNT_LOCKS.get(sender)
-            if lock is None:
-                lock = threading.Lock()
-                _ACCOUNT_LOCKS[sender] = lock
-            return lock
+        return _AccountLock(sender)
 
     def _guard_mainnet(self):
         on_mainnet = self.network is not None and self.network.is_mainnet
