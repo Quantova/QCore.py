@@ -230,6 +230,7 @@ jobs:
 
   publish:
     needs: [test, wheels, sdist]
+    if: vars.PYPI_TRUSTED_PUBLISHER == 'true'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

@@ -79,6 +79,8 @@ status = client.transaction(signed["tx_id"])
 
 The free signing functions such as `sign_transfer` take the validity deadline ready made and do not compare it with the chain head, so call `check_valid_until` with a head you trust first, or sign through the Client, which does this for you. A `SigningSession` reserves each nonce it hands out until it is signed, and a flow that stops early frees its nonce with `release`.
 
+`client.confirm_transaction(tx_id, roster)` confirms a transaction without trusting the gateway. It checks the finality certificate of the transaction's block against the validator roster you pass and trust, then checks that the transaction is inside that block.
+
 ## Sending a payable call
 
 A call to a contract can carry a value in Quon alongside its arguments, and every payable call must name the chain it signs for so the signature can never be replayed onto another network. Read the chain id from the node you mean to reach rather than assuming one. The nonce comes from the account. The validity deadline is the height after which the chain drops the transaction, and a deadline of zero, which would never expire, is refused. A call pays one transfer fee for every started 1210 units of its meter limit, so the raw call signers take the transfer fee the node reports and refuse a fee below `vm_call_fee(transfer_fee, meter_limit)`, a meter limit outside 1210 to 12500000, or call arguments above 128 KiB.

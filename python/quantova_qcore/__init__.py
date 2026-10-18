@@ -32,6 +32,7 @@ from ._native import (
     order_layout_hash,
     verify_finality,
     verify_event,
+    verify_transaction,
     decode_event,
     vm_call_fee,
     check_valid_until,
@@ -102,6 +103,7 @@ __all__ = [
     "order_layout_hash",
     "verify_finality",
     "verify_event",
+    "verify_transaction",
     "decode_event",
     "vm_call_fee",
     "check_valid_until",
@@ -494,6 +496,30 @@ class Client:
 
     def transaction(self, tx_id):
         return self._call("get_transaction", transaction_body(tx_id))
+
+    def confirm_transaction(self, tx_id, roster):
+        if not isinstance(tx_id, str):
+            raise ValueError("the transaction id must be a string")
+        roster_json = roster if isinstance(roster, str) else json.dumps(roster)
+        info = self.node_info()
+        name = info.get("chain_id") if isinstance(info, dict) and isinstance(info.get("chain_id"), str) else ""
+        configured = self.network.chain_id if self.network else None
+        if configured and name != configured:
+            raise RuntimeError(
+                f"the gateway reports chain {_shown(name)} but this client is configured for {configured}"
+            )
+        chain_id = chain_id_from_name(name)
+        proof = self._call("get_transaction_proof", json.dumps({"tx_id": tx_id}), strict=True)
+        height = _gateway_integer(proof.get("height"), "proof height")
+        finality = self._call("get_finality", json.dumps({"height": height}), strict=True)
+        verified = _loads(
+            verify_finality(chain_id, str(finality.get("header_bytes")), str(finality.get("certificate")), roster_json)
+        )
+        if int(verified["height"]) != height:
+            raise RuntimeError("the finalized header is not at the height the proof names")
+        if not verify_transaction(verified["transaction_root"], tx_id, str(proof.get("leaf")), json.dumps(proof.get("steps"))):
+            raise RuntimeError("the transaction is not proven inside the finalized block")
+        return {"tx_id": tx_id, "height": height, "index": _gateway_integer(proof.get("index"), "proof index"), "header": verified}
 
     def block(self, height):
         return self._call("get_block", block_by_height_body(height))

@@ -842,6 +842,24 @@ pub fn verify_event(event_root_hex: &str, leaf_hex: &str, steps_json: &str) -> P
 }
 
 #[pyfunction]
+pub fn verify_transaction(
+    transaction_root_hex: &str,
+    tx_id: &str,
+    leaf_hex: &str,
+    steps_json: &str,
+) -> PyResult<bool> {
+    let root: [u8; 32] = qcore::json::from_hex(transaction_root_hex)
+        .map_err(PyValueError::new_err)?
+        .try_into()
+        .map_err(|_| PyValueError::new_err("the transaction root is 32 bytes of hex"))?;
+    let leaf = qcore::json::from_hex(leaf_hex).map_err(PyValueError::new_err)?;
+    let steps = parse_steps(steps_json).map_err(PyValueError::new_err)?;
+    Ok(qcore::finality::verify_transaction(
+        &root, tx_id, &leaf, &steps,
+    ))
+}
+
+#[pyfunction]
 pub fn decode_event(leaf_hex: &str) -> PyResult<String> {
     let leaf = qcore::json::from_hex(leaf_hex).map_err(PyValueError::new_err)?;
     let event = qcore::finality::decode_event(&leaf).map_err(PyValueError::new_err)?;
@@ -905,6 +923,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(order_layout_hash, m)?)?;
     m.add_function(wrap_pyfunction!(verify_finality, m)?)?;
     m.add_function(wrap_pyfunction!(verify_event, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_transaction, m)?)?;
     m.add_function(wrap_pyfunction!(decode_event, m)?)?;
     m.add_function(wrap_pyfunction!(vm_call_fee, m)?)?;
     m.add_function(wrap_pyfunction!(check_valid_until, m)?)?;
