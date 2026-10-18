@@ -807,6 +807,7 @@ fn finalized_json(h: &qcore::finality::FinalizedHeader) -> String {
 #[pyfunction]
 pub fn verify_finality(
     chain_id: u64,
+    genesis_hex: &str,
     header_hex: &str,
     certificate_hex: &str,
     roster_json: &str,
@@ -814,8 +815,13 @@ pub fn verify_finality(
     let header = qcore::json::from_hex(header_hex).map_err(PyValueError::new_err)?;
     let certificate = qcore::json::from_hex(certificate_hex).map_err(PyValueError::new_err)?;
     let roster = parse_roster(roster_json).map_err(PyValueError::new_err)?;
-    let verified = qcore::finality::verify_finality(chain_id, &header, &certificate, &roster)
-        .map_err(PyValueError::new_err)?;
+    let genesis: [u8; 32] = qcore::json::from_hex(genesis_hex)
+        .map_err(PyValueError::new_err)?
+        .try_into()
+        .map_err(|_| PyValueError::new_err("the genesis hash must be 32 bytes of hex"))?;
+    let verified =
+        qcore::finality::verify_finality(chain_id, &genesis, &header, &certificate, &roster)
+            .map_err(PyValueError::new_err)?;
     Ok(finalized_json(&verified))
 }
 

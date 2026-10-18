@@ -83,9 +83,9 @@ The free signing functions such as `sign_transfer` take the chain head as their 
 
 A new session does not take an order nonce above zero from the gateway alone. Name the expected order nonce, or keep `client.save_session()` and pass it to `client.restore_session(state)` after a restart so tracked nonces and held signatures survive. The client refuses to sign for a retired chain name such as Q-test-net-1.
 
-`client.confirm_transaction(tx_id, roster)` confirms a transaction without trusting the gateway. It checks the finality certificate of the transaction's block against the validator roster you pass and trust, then checks that the transaction is inside that block.
+`client.confirm_transaction(tx_id, genesis_hash, roster)` confirms a transaction without trusting the gateway. It checks the finality certificate of the transaction's block against the genesis hash and validator roster you pass and trust, then checks that the transaction is inside that block.
 
-`client.trust_roster(roster)` gives the client a validator roster you trust. From then on the client checks the head the gateway reports against the finality certificate of that block before it signs, so a gateway cannot move a deadline by lying about the head. A mainnet client refuses to sign until it has a trusted roster.
+`client.trust_roster(genesis_hash, roster)` gives the client a genesis hash and a validator roster you trust. Every attestation signs the genesis hash, so a certificate from another network that reuses the chain name and keys never verifies. From then on the client checks the head the gateway reports against the finality certificate of that block before it signs, so a gateway cannot move a deadline by lying about the head. A mainnet client refuses to sign until it has a trusted roster.
 
 ## Sending a payable call
 

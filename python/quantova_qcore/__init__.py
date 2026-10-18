@@ -5,6 +5,7 @@
 import importlib.metadata
 import ipaddress
 import json
+import re
 import unicodedata
 import secrets
 import ssl
@@ -490,7 +491,9 @@ class Client:
             self._session.outcome(key, slot, verdict == "accepted")
         return outcome
 
-    def trust_roster(self, roster):
+    def trust_roster(self, genesis_hash, roster):
+        if not isinstance(genesis_hash, str) or re.fullmatch(r"[0-9a-fA-F]{64}", genesis_hash) is None:
+            raise ValueError("the genesis hash you trust must be 64 hex characters")
         roster_json = roster if isinstance(roster, str) else json.dumps(roster)
         try:
             members = json.loads(roster_json)
@@ -499,6 +502,7 @@ class Client:
         if not isinstance(members, list) or not members:
             raise ValueError("a trusted validator roster must be a non empty list")
         self._trusted_roster = roster_json
+        self._trusted_genesis = genesis_hash.lower()
 
     def _verify_head(self, info):
         roster = getattr(self, "_trusted_roster", None)
@@ -514,7 +518,7 @@ class Client:
         finality = self._call("get_finality", json.dumps({"height": head}), strict=True)
         if not isinstance(finality, dict) or not isinstance(finality.get("header_bytes"), str) or not isinstance(finality.get("certificate"), str):
             raise RuntimeError("the gateway gave no finality proof for the head it reports, refusing to sign")
-        verified = _loads(verify_finality(chain_id, finality["header_bytes"], finality["certificate"], roster))
+        verified = _loads(verify_finality(chain_id, self._trusted_genesis, finality["header_bytes"], finality["certificate"], roster))
         if int(verified["height"]) != head:
             raise RuntimeError(
                 f"the gateway reports head {head} but its finality proof is for height {verified['height']}, refusing to sign"
@@ -557,9 +561,11 @@ class Client:
             raise ValueError("the saved session must be the string save_session returned")
         self._session.import_state(state)
 
-    def confirm_transaction(self, tx_id, roster):
+    def confirm_transaction(self, tx_id, genesis_hash, roster):
         if not isinstance(tx_id, str):
             raise ValueError("the transaction id must be a string")
+        if not isinstance(genesis_hash, str) or re.fullmatch(r"[0-9a-fA-F]{64}", genesis_hash) is None:
+            raise ValueError("the genesis hash you trust must be 64 hex characters")
         roster_json = roster if isinstance(roster, str) else json.dumps(roster)
         info = self.node_info()
         name = info.get("chain_id") if isinstance(info, dict) and isinstance(info.get("chain_id"), str) else ""
@@ -573,7 +579,7 @@ class Client:
         height = _gateway_integer(proof.get("height"), "proof height")
         finality = self._call("get_finality", json.dumps({"height": height}), strict=True)
         verified = _loads(
-            verify_finality(chain_id, str(finality.get("header_bytes")), str(finality.get("certificate")), roster_json)
+            verify_finality(chain_id, genesis_hash.lower(), str(finality.get("header_bytes")), str(finality.get("certificate")), roster_json)
         )
         if int(verified["height"]) != height:
             raise RuntimeError("the finalized header is not at the height the proof names")
