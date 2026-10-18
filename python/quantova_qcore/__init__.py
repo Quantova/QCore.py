@@ -490,7 +490,38 @@ class Client:
             self._session.outcome(key, slot, verdict == "accepted")
         return outcome
 
+    def trust_roster(self, roster):
+        roster_json = roster if isinstance(roster, str) else json.dumps(roster)
+        try:
+            members = json.loads(roster_json)
+        except ValueError:
+            raise ValueError("the trusted validator roster is not valid JSON")
+        if not isinstance(members, list) or not members:
+            raise ValueError("a trusted validator roster must be a non empty list")
+        self._trusted_roster = roster_json
+
+    def _verify_head(self, info):
+        roster = getattr(self, "_trusted_roster", None)
+        if roster is None:
+            if self.network is not None and self.network.is_mainnet:
+                raise RuntimeError(
+                    "a mainnet client needs a trusted validator roster to check the head it signs against, call trust_roster first"
+                )
+            return
+        head = _gateway_integer(info.get("head_height") if isinstance(info, dict) else None, "head height")
+        name = info.get("chain_id") if isinstance(info.get("chain_id"), str) else ""
+        chain_id = chain_id_from_name(name)
+        finality = self._call("get_finality", json.dumps({"height": head}), strict=True)
+        if not isinstance(finality, dict) or not isinstance(finality.get("header_bytes"), str) or not isinstance(finality.get("certificate"), str):
+            raise RuntimeError("the gateway gave no finality proof for the head it reports, refusing to sign")
+        verified = _loads(verify_finality(chain_id, finality["header_bytes"], finality["certificate"], roster))
+        if int(verified["height"]) != head:
+            raise RuntimeError(
+                f"the gateway reports head {head} but its finality proof is for height {verified['height']}, refusing to sign"
+            )
+
     def _validity(self, info):
+        self._verify_head(info)
         head = _gateway_integer(info.get("head_height") if isinstance(info, dict) else None, "head height")
         chain = info.get("chain_id") if isinstance(info.get("chain_id"), str) else ""
         now = time.monotonic()
