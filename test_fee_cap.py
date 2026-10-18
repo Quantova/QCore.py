@@ -33,7 +33,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/node_info":
             fee_field = "not a dict" if state["fee_bad"] else {"transfer_quon": state["fee"], "quon_per_qtov": "1000000"}
-            send({"chain_id": "Q-dev-net-1", "head_height": 10, "denomination": "Quon",
+            send({"chain_id": "Q-dev-net-1", "head_height": 10, "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000", "denomination": "Quon",
                   "fee": fee_field, "version": "test"})
         elif self.path == "/v1/get_account":
             send({"address": body["address"], "nonce": state["nonce"], "balance": "0", "scheme": 1, "has_key": True})
@@ -52,7 +52,7 @@ def main():
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     client = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
-    seed = bytes.fromhex("0b" * 32)
+    seed = bytearray.fromhex("0b" * 32)
     to = qcore.address(seed, 1)
 
     state["fee"] = "100"

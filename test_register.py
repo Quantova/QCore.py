@@ -32,7 +32,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
 
         if self.path == "/v1/node_info":
-            send({"chain_id": "Q-dev-net-1", "head_height": 10, "denomination": "Quon",
+            send({"chain_id": "Q-dev-net-1", "head_height": 10, "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000", "denomination": "Quon",
                   "fee": {"transfer_quon": state["fee"], "quon_per_qtov": "1000000"}, "version": "test"})
         elif self.path == "/v1/get_account":
             state["asked_account"] = body["address"]
@@ -53,7 +53,7 @@ def main():
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     client = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
-    seed = bytes.fromhex("0b" * 32)
+    seed = bytearray.fromhex("0b" * 32)
     sender = qcore.address(seed, 0)
 
     state["fee"] = "100"
@@ -69,7 +69,7 @@ def main():
     if state["asked_account"] != sender:
         fail("register must read the nonce of the account it registers")
     transfer_signed = json.loads(qcore.sign_transfer(
-        seed, 0, qcore.address(seed, 1), 1000, 0, 100, qcore.chain_id_from_name("Q-dev-net-1"), 310, 0))
+        seed, 0, qcore.address(seed, 1), 1000, 0, 100, qcore.chain_id_from_name("Q-dev-net-1"), 310, 0, "00" * 32))
     if signed["tx_hex"] == transfer_signed["tx_hex"]:
         fail("a registration must not be identical to a transfer")
 

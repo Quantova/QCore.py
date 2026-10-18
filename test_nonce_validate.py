@@ -32,7 +32,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
 
         if self.path == "/v1/node_info":
-            send({"chain_id": "Q-dev-net-1", "head_height": state["head"], "denomination": "Quon",
+            send({"chain_id": "Q-dev-net-1", "head_height": state["head"], "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000", "denomination": "Quon",
                   "fee": {"transfer_quon": "500", "quon_per_qtov": "1000000"}, "version": "test"})
         elif self.path == "/v1/get_account":
             reply = {"nonce": state["nonce"], "balance": "0", "scheme": 1, "has_key": True}
@@ -74,7 +74,7 @@ def main():
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     client = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
-    seed = bytes.fromhex("0b" * 32)
+    seed = bytearray.fromhex("0b" * 32)
     to = qcore.address(seed, 1)
 
     state["nonce"] = 4.9
@@ -95,14 +95,14 @@ def main():
     fresh = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
     signed, _ = fresh.transfer(seed, 0, to, "1000", "1000000")
     chain_id = qcore.chain_id_from_name("Q-dev-net-1")
-    expected = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 310, 0))
+    expected = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 310, 0, "00" * 32))
     if signed["tx_hex"] != expected["tx_hex"]:
         fail("a client transfer did not expire 300 blocks past the head")
-    later = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 311, 0))
+    later = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 311, 0, "00" * 32))
     if later["tx_hex"] == expected["tx_hex"]:
         fail("the validity window is not part of what is signed")
     try:
-        qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 0, 0)
+        qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 0, 0, "00" * 32)
         fail("a deadline of zero that never expires was signed")
     except ValueError:
         pass
@@ -141,12 +141,12 @@ def main():
         if "already signed" not in str(err):
             fail("unclear held nonce error: " + str(err))
     signed, _ = stuck.transfer(seed, 0, to, "1000", "1000000", expected_nonce=3)
-    again = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 3, 500, chain_id, 310, 0))
+    again = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 3, 500, chain_id, 310, 0, "00" * 32))
     if signed["tx_hex"] != again["tx_hex"]:
         fail("a submission that never landed pushed the next one past the nonce the chain admits")
     state["nonce"] = 9
     signed, _ = stuck.transfer(seed, 0, to, "1000", "1000000")
-    at_nine = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 9, 500, chain_id, 310, 0))
+    at_nine = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 9, 500, chain_id, 310, 0, "00" * 32))
     if signed["tx_hex"] != at_nine["tx_hex"]:
         fail("a gateway nonce above the local one must be signed at, not refused")
     if stuck._session.next_nonce(signed["from"]) != 10:
@@ -168,9 +168,9 @@ def main():
     _, outcome = retry.transfer(seed, 0, to, "2", "1000000", expected_nonce=3)
     if outcome["verdict"] != "accepted":
         fail("naming the nonce explicitly did not override the hold")
-    retry._validity({"head_height": 250})
+    retry._validity({"head_height": 250, "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000"})
     try:
-        retry._validity({"head_height": 200})
+        retry._validity({"head_height": 200, "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000"})
         fail("a head below the highest one seen was accepted")
     except RuntimeError as err:
         if "below the 250" not in str(err):

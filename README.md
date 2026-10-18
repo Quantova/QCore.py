@@ -39,7 +39,7 @@ The Client checks every number the gateway reports before it signs. A fee or bal
 
 `Client.call`, `Client.payable_call` and `Client.asset_call` sign a contract call, a call that moves Quon and a call that moves an issued asset, each bounded by the fee ceiling you pass.
 
-Every function that takes a seed accepts a bytearray or bytes of thirty two bytes and refuses a hex string. Keep the seed in a bytearray and wipe it with `seed[:] = bytes(32)` when you are done, and never print or log any part of it. The native extension wipes its own copy of a seed before it frees it.
+Every function that takes a seed accepts only a bytearray of thirty two bytes. It refuses a hex string and an immutable bytes object, since neither can be wiped. Keep the seed in a bytearray and wipe it with `seed[:] = bytes(32)` when you are done, and never print or log any part of it. The native extension wipes its own copy of a seed before it frees it.
 
 ## Using it
 
@@ -77,13 +77,15 @@ signed, outcome = client.transfer(seed, 0, to, 1000, MAX_FEE)
 status = client.transaction(signed["tx_id"])
 ```
 
-The free signing functions such as `sign_transfer` take the chain head as their last argument and refuse a validity deadline that is not past the head or lies more than 3600 blocks beyond it. A `SigningSession` reserves each nonce it hands out until it is signed, and a flow that stops early frees its nonce with `release`.
+The free signing functions such as `sign_transfer` take the chain head and then the genesis hash as their last two arguments. They refuse a validity deadline that is not past the head or lies more than 3600 blocks beyond it, and every signature covers the genesis hash, so a transaction signed for one network never verifies on another network that reuses its name. A `SigningSession` reserves each nonce it hands out until it is signed, and a flow that stops early frees its nonce with `release`.
 
 `verify_finality` measures signed stake against the whole roster you pass, which matches the chain when every validator in the roster sits on the committee, as on a network of main validators. Pass exactly the validators of the block's epoch. Each roster entry names the validator id, its stake, its attestation key and its sortition root with the number of slots the root covers, exactly as get_validator_set serves them, and every signer must prove its committee membership against its root.
 
 A new session does not take an order nonce above zero from the gateway alone. Name the expected order nonce, or keep `client.save_session()` and pass it to `client.restore_session(state)` after a restart so tracked nonces and held signatures survive. The client refuses to sign for a retired chain name such as Q-test-net-1.
 
 `client.confirm_transaction(tx_id, genesis_hash, roster)` confirms a transaction without trusting the gateway. It checks the finality certificate of the transaction's block against the genesis hash and validator roster you pass and trust, then checks that the transaction is inside that block.
+
+A client signs for a public network only with a pinned genesis hash, taken from `network.genesis_hash` or the `genesis_hash` argument of `Client`, and refuses when the gateway reports a different genesis or none is pinned.
 
 `client.trust_roster(genesis_hash, roster)` gives the client a genesis hash and a validator roster you trust. Every attestation signs the genesis hash, so a certificate from another network that reuses the chain name and keys never verifies. From then on the client checks the head the gateway reports against the finality certificate of that block before it signs, so a gateway cannot move a deadline by lying about the head. A mainnet client refuses to sign until it has a trusted roster.
 

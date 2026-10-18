@@ -51,6 +51,8 @@ from ._native import (
     check_gateway_json,
     testnet_rpc_url,
     testnet_chain_name,
+    testnet_genesis_hash,
+    mainnet_genesis_hash,
     validity_blocks,
     order_signer,
     vm_deploy_address,
@@ -330,9 +332,17 @@ def _expected(value, label):
 DENOMINATION = "Quon"
 DECIMALS = 6
 
+def _pinned_genesis(value):
+    if value is None:
+        return None
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-fA-F]{64}", value) is None:
+        raise ValueError("a pinned genesis hash must be 64 hex characters")
+    return value.lower()
+
+
 class Network:
     def __init__(self, name, chain_id=None, rpc_url=None, explorer_url=None,
-                 denomination=DENOMINATION, decimals=DECIMALS, is_mainnet=False):
+                 denomination=DENOMINATION, decimals=DECIMALS, is_mainnet=False, genesis_hash=None):
         self.name = name
         self.chain_id = chain_id
         self.rpc_url = rpc_url
@@ -340,17 +350,20 @@ class Network:
         self.denomination = denomination
         self.decimals = decimals
         self.is_mainnet = is_mainnet is True
+        self.genesis_hash = _pinned_genesis(genesis_hash)
 
     @classmethod
     def testnet(cls):
         return cls(name="testnet", chain_id=testnet_chain_name(),
                    rpc_url=testnet_rpc_url(),
-                   explorer_url="https://qvmscan.io", is_mainnet=False)
+                   explorer_url="https://qvmscan.io", is_mainnet=False,
+                   genesis_hash=testnet_genesis_hash())
 
     @classmethod
     def mainnet(cls):
         return cls(name="mainnet", chain_id="Q-main-net-1", rpc_url=None,
-                   explorer_url="https://qvmscan.io", is_mainnet=True)
+                   explorer_url="https://qvmscan.io", is_mainnet=True,
+                   genesis_hash=mainnet_genesis_hash())
 
     @classmethod
     def for_url(cls, base):
@@ -363,7 +376,7 @@ def _transfer_fee(info):
     return _gateway_decimal(fee_obj.get("transfer_quon"), "transfer fee")
 
 class Client:
-    def __init__(self, target, acknowledge_mainnet=False, network=None, address_book=None):
+    def __init__(self, target, acknowledge_mainnet=False, network=None, address_book=None, genesis_hash=None):
         self.acknowledge_mainnet = acknowledge_mainnet is True
         if isinstance(target, Network):
             self.network = target
@@ -383,6 +396,11 @@ class Client:
             self.network = network if isinstance(network, Network) else Network.for_url(base)
         self.base = _require_safe_transport(base).rstrip("/")
         self._pinned_chain = self.network.chain_id if self.network else None
+        network_genesis = self.network.genesis_hash if self.network else None
+        option_genesis = _pinned_genesis(genesis_hash)
+        if network_genesis and option_genesis and network_genesis != option_genesis:
+            raise ValueError("the genesis_hash argument differs from the genesis pinned in the network, refusing to open the client")
+        self._pinned_genesis = network_genesis or option_genesis
         self._head_floor = None
         self._session = SigningSession([str(a) for a in (address_book or [])])
 
@@ -507,7 +525,9 @@ class Client:
     def _verify_head(self, info):
         roster = getattr(self, "_trusted_roster", None)
         if roster is None:
-            if self.network is not None and self.network.is_mainnet:
+            reported = info.get("chain_id") if isinstance(info, dict) and isinstance(info.get("chain_id"), str) else ""
+            configured = (self.network.chain_id if self.network is not None else None) or getattr(self, "_expected_chain_id", None) or ""
+            if (self.network is not None and self.network.is_mainnet) or _is_mainnet_chain(reported) or _is_mainnet_chain(configured):
                 raise RuntimeError(
                     "a mainnet client needs a trusted validator roster to check the head it signs against, call trust_roster first"
                 )
@@ -538,8 +558,16 @@ class Client:
             raise RuntimeError(str(err))
         if floor is None or head > floor[0]:
             self._head_floor = (head, now)
-        self._last_head = head
-        return until
+        genesis = info.get("genesis_hash") if isinstance(info, dict) else None
+        if not isinstance(genesis, str) or re.fullmatch(r"[0-9a-fA-F]{64}", genesis) is None:
+            raise RuntimeError("the gateway reports a genesis hash that is not 32 bytes of hex, refusing to sign")
+        reported = genesis.lower()
+        if self._pinned_genesis is not None:
+            if self._pinned_genesis != reported:
+                raise RuntimeError("the gateway reports a genesis hash other than the one pinned for this network, refusing to sign")
+        elif _is_public_chain(chain):
+            raise RuntimeError(f"no genesis hash is pinned for the public chain {_shown(chain)}, pin the network genesis before signing")
+        return until, head, reported
 
     def _call_fee(self, info, meter, ceiling, max_fee):
         transfer_fee = _transfer_fee(info)
@@ -641,10 +669,10 @@ class Client:
                 raise ValueError(
                     f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
                 )
-            until = self._validity(info)
+            until, head, genesis = self._validity(info)
             nonce = self._account_slot(sender, expected_nonce)
             signed = _loads(
-                sign_transfer(seed, index, to, _whole(amount, "the amount must be an integer number of Quon"), nonce, fee, chain_id, until, self._last_head)
+                sign_transfer(seed, index, to, _whole(amount, "the amount must be an integer number of Quon"), nonce, fee, chain_id, until, head, genesis)
             )
             self._remember_targets([to])
             outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
@@ -663,9 +691,9 @@ class Client:
                 raise ValueError(
                     f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
                 )
-            until = self._validity(info)
+            until, head, genesis = self._validity(info)
             nonce = self._account_slot(sender, expected_nonce)
-            signed = _loads(sign_register(seed, index, nonce, fee, chain_id, until, self._last_head))
+            signed = _loads(sign_register(seed, index, nonce, fee, chain_id, until, head, genesis))
             outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
             return signed, outcome
 
@@ -679,9 +707,9 @@ class Client:
             self._guard_mainnet()
             chain_id = self._signing_chain_id(info)
             transfer_fee, fee = self._call_fee(info, meter, ceiling, max_fee)
-            until = self._validity(info)
+            until, head, genesis = self._validity(info)
             nonce = self._account_slot(sender, expected_nonce)
-            signed = _loads(sign(nonce, meter, fee, chain_id, until, transfer_fee))
+            signed = _loads(sign(nonce, meter, fee, chain_id, until, transfer_fee, head, genesis))
             self._remember_targets(targets)
             outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
             return signed, outcome
@@ -691,9 +719,9 @@ class Client:
             raise ValueError("the target is not a Q1 address")
         return self._signed_call(
             seed, index, [target], meter_limit, max_fee, expected_nonce,
-            lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_call(
+            lambda nonce, meter, fee, chain_id, until, transfer_fee, head, genesis: sign_call(
                 seed, index, target, args_hex, nonce, meter, fee, chain_id, until, transfer_fee,
-                self._last_head,
+                head, genesis,
             ),
         )
 
@@ -704,9 +732,9 @@ class Client:
         amount = _whole(value, "the value must be an integer number of Quon")
         return self._signed_call(
             seed, index, [target], meter_limit, max_fee, expected_nonce,
-            lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_payable_call(
+            lambda nonce, meter, fee, chain_id, until, transfer_fee, head, genesis: sign_payable_call(
                 seed, index, target, args_hex, nonce, meter, fee, amount, chain_id, until,
-                transfer_fee, self._last_head,
+                transfer_fee, head, genesis,
             ),
         )
 
@@ -719,8 +747,8 @@ class Client:
         moved = _whole(amount, "the amount must be an integer number of Quon")
         return self._signed_call(
             seed, index, [target, asset_issuer], meter_limit, max_fee, expected_nonce,
-            lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_asset_call(
+            lambda nonce, meter, fee, chain_id, until, transfer_fee, head, genesis: sign_asset_call(
                 seed, index, target, args_hex, asset_issuer, moved, nonce, meter, fee,
-                chain_id, until, transfer_fee, self._last_head,
+                chain_id, until, transfer_fee, head, genesis,
             ),
         )

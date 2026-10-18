@@ -95,8 +95,8 @@ def payable_vector():
     print("transaction.payable")
     v = load("transaction.payable.json")
 
-    sender = qcore.address(bytes.fromhex(v["master_seed"]), v["sender_index"])
-    target = qcore.address(bytes.fromhex(v["master_seed"]), v["target_index"])
+    sender = qcore.address(bytearray.fromhex(v["master_seed"]), v["sender_index"])
+    target = qcore.address(bytearray.fromhex(v["master_seed"]), v["target_index"])
     check("sender derives to the vector sender", bech32_equal(sender, v["sender"]), True)
     check("target derives to the vector target", bech32_equal(target, v["target"]), True)
     check("the derived sender renders uppercase Q1", sender.startswith("Q1"), True)
@@ -105,13 +105,13 @@ def payable_vector():
     b = v["bounded"]
     check("the never expiring deadline the frozen vector was signed at is refused", refused(
         lambda: qcore.sign_payable_call(
-            bytes.fromhex(v["master_seed"]), v["sender_index"], target, v["args"],
+            bytearray.fromhex(v["master_seed"]), v["sender_index"], target, v["args"],
             v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"]), 0,
-            int(b["transfer_fee"]), 0)), True)
+            int(b["transfer_fee"]), 0, "00" * 32)), True)
     signed = json.loads(qcore.sign_payable_call(
-        bytes.fromhex(v["master_seed"]), v["sender_index"], target, v["args"],
+        bytearray.fromhex(v["master_seed"]), v["sender_index"], target, v["args"],
         v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"]), b["valid_until"],
-        int(b["transfer_fee"]), 0))
+        int(b["transfer_fee"]), 0, "00" * 32))
     check("the signer address is the vector sender", bech32_equal(signed["from"], v["sender"]), True)
     check("the from field renders uppercase Q1", signed["from"].startswith("Q1"), True)
     check("the signed bytes match the bounded QCore.js tx hex byte for byte",
@@ -132,15 +132,15 @@ def payable_vector():
     check("serialized chain id field", got["chain_id"] == int(v["chain_id"]), True)
 
     again = json.loads(qcore.sign_payable_call(
-        bytes.fromhex(v["master_seed"]), v["sender_index"], target, v["args"],
+        bytearray.fromhex(v["master_seed"]), v["sender_index"], target, v["args"],
         v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"]), b["valid_until"],
-        int(b["transfer_fee"]), 0))
+        int(b["transfer_fee"]), 0, "00" * 32))
     check("signing is deterministic", again["tx_hex"] == signed["tx_hex"], True)
 
     lower = json.loads(qcore.sign_payable_call(
-        bytes.fromhex(v["master_seed"]), v["sender_index"], target.lower(), v["args"],
+        bytearray.fromhex(v["master_seed"]), v["sender_index"], target.lower(), v["args"],
         v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"]), b["valid_until"],
-        int(b["transfer_fee"]), 0))
+        int(b["transfer_fee"]), 0, "00" * 32))
     check("a lowercase target signs the same bytes", lower["tx_hex"] == signed["tx_hex"], True)
 
 def main():

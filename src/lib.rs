@@ -6,9 +6,18 @@ use pyo3::prelude::*;
 use pyo3::types::{PyByteArray, PyBytes, PyString};
 use qtv_wipe::Zeroizing;
 
+fn genesis(hex: &str) -> PyResult<[u8; 32]> {
+    qcore::json::from_hex(hex)
+        .ok()
+        .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
+        .ok_or_else(|| PyValueError::new_err("the genesis hash must be 32 bytes of hex"))
+}
+
 fn seed(seed_bytes: &Bound<'_, PyAny>) -> PyResult<Zeroizing<[u8; 32]>> {
-    if let Ok(bytes) = seed_bytes.cast::<PyBytes>() {
-        return copy_seed(bytes.as_bytes());
+    if seed_bytes.cast::<PyBytes>().is_ok() {
+        return Err(PyValueError::new_err(
+            "a seed must be a bytearray you can wipe after use, an immutable bytes object stays in memory",
+        ));
     }
     if let Ok(array) = seed_bytes.cast::<PyByteArray>() {
         let copied = Zeroizing::new(array.to_vec());
@@ -119,6 +128,16 @@ fn check_gateway_json(response: &str) -> PyResult<()> {
 #[pyfunction]
 fn testnet_rpc_url() -> &'static str {
     qcore::TESTNET_RPC_URL
+}
+
+#[pyfunction]
+fn testnet_genesis_hash() -> Option<String> {
+    qcore::TESTNET_GENESIS_HASH.map(|hash| qcore::json::to_hex(&hash))
+}
+
+#[pyfunction]
+fn mainnet_genesis_hash() -> Option<String> {
+    qcore::MAINNET_GENESIS_HASH.map(|hash| qcore::json::to_hex(&hash))
 }
 
 #[pyfunction]
@@ -358,6 +377,7 @@ fn sign_transfer(
     chain_id: u64,
     valid_until: u64,
     head: u64,
+    genesis_hex: &str,
 ) -> PyResult<String> {
     if !qcore::valid_address(to) {
         return Err(PyValueError::new_err("the recipient is not a Q1 address"));
@@ -372,6 +392,7 @@ fn sign_transfer(
         chain_id,
         valid_until,
         head,
+        &genesis(genesis_hex)?,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -399,6 +420,7 @@ fn sign_call(
     valid_until: u64,
     transfer_fee: u128,
     head: u64,
+    genesis_hex: &str,
 ) -> PyResult<String> {
     if !qcore::valid_address(target) {
         return Err(PyValueError::new_err("the target is not a Q1 address"));
@@ -416,6 +438,7 @@ fn sign_call(
         valid_until,
         transfer_fee,
         head,
+        &genesis(genesis_hex)?,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -444,6 +467,7 @@ fn sign_payable_call(
     valid_until: u64,
     transfer_fee: u128,
     head: u64,
+    genesis_hex: &str,
 ) -> PyResult<String> {
     if !qcore::valid_address(target) {
         return Err(PyValueError::new_err("the target is not a Q1 address"));
@@ -462,6 +486,7 @@ fn sign_payable_call(
         valid_until,
         transfer_fee,
         head,
+        &genesis(genesis_hex)?,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -491,6 +516,7 @@ fn sign_asset_call(
     valid_until: u64,
     transfer_fee: u128,
     head: u64,
+    genesis_hex: &str,
 ) -> PyResult<String> {
     let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
     let signed = qcore::sign_asset_call(
@@ -507,6 +533,7 @@ fn sign_asset_call(
         valid_until,
         transfer_fee,
         head,
+        &genesis(genesis_hex)?,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -521,6 +548,7 @@ fn sign_asset_call(
 }
 
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 fn sign_register(
     seed_bytes: &Bound<'_, PyAny>,
     index: u64,
@@ -529,6 +557,7 @@ fn sign_register(
     chain_id: u64,
     valid_until: u64,
     head: u64,
+    genesis_hex: &str,
 ) -> PyResult<String> {
     let signed = qcore::sign_register(
         &*seed(seed_bytes)?,
@@ -538,6 +567,7 @@ fn sign_register(
         chain_id,
         valid_until,
         head,
+        &genesis(genesis_hex)?,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -886,6 +916,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(check_gateway_json, m)?)?;
     m.add_function(wrap_pyfunction!(testnet_rpc_url, m)?)?;
     m.add_function(wrap_pyfunction!(testnet_chain_name, m)?)?;
+    m.add_function(wrap_pyfunction!(testnet_genesis_hash, m)?)?;
+    m.add_function(wrap_pyfunction!(mainnet_genesis_hash, m)?)?;
     m.add_function(wrap_pyfunction!(validity_blocks, m)?)?;
     m.add_class::<SigningSession>()?;
     m.add_function(wrap_pyfunction!(order_signer, m)?)?;

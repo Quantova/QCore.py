@@ -11,15 +11,15 @@ except ModuleNotFoundError:
     import quantova_qcore as qcore
 
 def main():
-    seed = bytes.fromhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+    seed = bytearray.fromhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
     chain = qcore.testnet_chain_id()
 
     address = qcore.address(seed, 0)
     assert address.startswith("Q1"), "the seed decodes through the zeroizing scratch to an address"
 
     recipient = qcore.address(seed, 1)
-    first = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310, 0)
-    second = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310, 0)
+    first = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310, 0, "ab" * 32)
+    second = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310, 0, "ab" * 32)
     assert first == second, "signing stays deterministic after the seed routes through wiped scratch"
 
     phrase_bytes = qcore.mnemonic_from_seed(seed)
