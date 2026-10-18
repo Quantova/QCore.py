@@ -95,14 +95,14 @@ def main():
     fresh = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
     signed, _ = fresh.transfer(seed, 0, to, "1000", "1000000")
     chain_id = qcore.chain_id_from_name("Q-dev-net-1")
-    expected = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 310))
+    expected = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 310, 0))
     if signed["tx_hex"] != expected["tx_hex"]:
         fail("a client transfer did not expire 300 blocks past the head")
-    later = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 311))
+    later = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 311, 0))
     if later["tx_hex"] == expected["tx_hex"]:
         fail("the validity window is not part of what is signed")
     try:
-        qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 0)
+        qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 0, 0)
         fail("a deadline of zero that never expires was signed")
     except ValueError:
         pass
@@ -141,12 +141,12 @@ def main():
         if "already signed" not in str(err):
             fail("unclear held nonce error: " + str(err))
     signed, _ = stuck.transfer(seed, 0, to, "1000", "1000000", expected_nonce=3)
-    again = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 3, 500, chain_id, 310))
+    again = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 3, 500, chain_id, 310, 0))
     if signed["tx_hex"] != again["tx_hex"]:
         fail("a submission that never landed pushed the next one past the nonce the chain admits")
     state["nonce"] = 9
     signed, _ = stuck.transfer(seed, 0, to, "1000", "1000000")
-    at_nine = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 9, 500, chain_id, 310))
+    at_nine = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 9, 500, chain_id, 310, 0))
     if signed["tx_hex"] != at_nine["tx_hex"]:
         fail("a gateway nonce above the local one must be signed at, not refused")
     if stuck._session.next_nonce(signed["from"]) != 10:

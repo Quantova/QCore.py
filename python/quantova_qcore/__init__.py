@@ -503,6 +503,7 @@ class Client:
             raise RuntimeError(str(err))
         if floor is None or head > floor[0]:
             self._head_floor = (head, now)
+        self._last_head = head
         return until
 
     def _call_fee(self, info, meter, ceiling, max_fee):
@@ -606,7 +607,7 @@ class Client:
             until = self._validity(info)
             nonce = self._account_slot(sender, expected_nonce)
             signed = _loads(
-                sign_transfer(seed, index, to, _whole(amount, "the amount must be an integer number of Quon"), nonce, fee, chain_id, until)
+                sign_transfer(seed, index, to, _whole(amount, "the amount must be an integer number of Quon"), nonce, fee, chain_id, until, self._last_head)
             )
             self._remember_targets([to])
             outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
@@ -627,7 +628,7 @@ class Client:
                 )
             until = self._validity(info)
             nonce = self._account_slot(sender, expected_nonce)
-            signed = _loads(sign_register(seed, index, nonce, fee, chain_id, until))
+            signed = _loads(sign_register(seed, index, nonce, fee, chain_id, until, self._last_head))
             outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
             return signed, outcome
 
@@ -655,6 +656,7 @@ class Client:
             seed, index, [target], meter_limit, max_fee, expected_nonce,
             lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_call(
                 seed, index, target, args_hex, nonce, meter, fee, chain_id, until, transfer_fee,
+                self._last_head,
             ),
         )
 
@@ -667,7 +669,7 @@ class Client:
             seed, index, [target], meter_limit, max_fee, expected_nonce,
             lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_payable_call(
                 seed, index, target, args_hex, nonce, meter, fee, amount, chain_id, until,
-                transfer_fee,
+                transfer_fee, self._last_head,
             ),
         )
 
@@ -682,6 +684,6 @@ class Client:
             seed, index, [target, asset_issuer], meter_limit, max_fee, expected_nonce,
             lambda nonce, meter, fee, chain_id, until, transfer_fee: sign_asset_call(
                 seed, index, target, args_hex, asset_issuer, moved, nonce, meter, fee,
-                chain_id, until, transfer_fee,
+                chain_id, until, transfer_fee, self._last_head,
             ),
         )

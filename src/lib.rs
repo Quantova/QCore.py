@@ -357,6 +357,7 @@ fn sign_transfer(
     fee: u128,
     chain_id: u64,
     valid_until: u64,
+    head: u64,
 ) -> PyResult<String> {
     if !qcore::valid_address(to) {
         return Err(PyValueError::new_err("the recipient is not a Q1 address"));
@@ -370,6 +371,7 @@ fn sign_transfer(
         fee,
         chain_id,
         valid_until,
+        head,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -396,6 +398,7 @@ fn sign_call(
     chain_id: u64,
     valid_until: u64,
     transfer_fee: u128,
+    head: u64,
 ) -> PyResult<String> {
     if !qcore::valid_address(target) {
         return Err(PyValueError::new_err("the target is not a Q1 address"));
@@ -412,6 +415,7 @@ fn sign_call(
         chain_id,
         valid_until,
         transfer_fee,
+        head,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -439,6 +443,7 @@ fn sign_payable_call(
     chain_id: u64,
     valid_until: u64,
     transfer_fee: u128,
+    head: u64,
 ) -> PyResult<String> {
     if !qcore::valid_address(target) {
         return Err(PyValueError::new_err("the target is not a Q1 address"));
@@ -456,6 +461,7 @@ fn sign_payable_call(
         chain_id,
         valid_until,
         transfer_fee,
+        head,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -484,6 +490,7 @@ fn sign_asset_call(
     chain_id: u64,
     valid_until: u64,
     transfer_fee: u128,
+    head: u64,
 ) -> PyResult<String> {
     let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
     let signed = qcore::sign_asset_call(
@@ -499,6 +506,7 @@ fn sign_asset_call(
         chain_id,
         valid_until,
         transfer_fee,
+        head,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![
@@ -520,6 +528,7 @@ fn sign_register(
     fee: u128,
     chain_id: u64,
     valid_until: u64,
+    head: u64,
 ) -> PyResult<String> {
     let signed = qcore::sign_register(
         &*seed(seed_bytes)?,
@@ -528,6 +537,7 @@ fn sign_register(
         fee,
         chain_id,
         valid_until,
+        head,
     )
     .map_err(PyValueError::new_err)?;
     Ok(qcore::json::object(vec![

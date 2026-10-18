@@ -18,8 +18,8 @@ def main():
     assert address.startswith("Q1"), "the seed decodes through the zeroizing scratch to an address"
 
     recipient = qcore.address(seed, 1)
-    first = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310)
-    second = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310)
+    first = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310, 0)
+    second = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310, 0)
     assert first == second, "signing stays deterministic after the seed routes through wiped scratch"
 
     phrase_bytes = qcore.mnemonic_from_seed(seed)

@@ -77,7 +77,7 @@ signed, outcome = client.transfer(seed, 0, to, 1000, MAX_FEE)
 status = client.transaction(signed["tx_id"])
 ```
 
-The free signing functions such as `sign_transfer` take the validity deadline ready made and do not compare it with the chain head, so call `check_valid_until` with a head you trust first, or sign through the Client, which does this for you. A `SigningSession` reserves each nonce it hands out until it is signed, and a flow that stops early frees its nonce with `release`.
+The free signing functions such as `sign_transfer` take the chain head as their last argument and refuse a validity deadline that is not past the head or lies more than 3600 blocks beyond it. A `SigningSession` reserves each nonce it hands out until it is signed, and a flow that stops early frees its nonce with `release`.
 
 `verify_finality` measures signed stake against the whole roster you pass, which matches the chain when every validator in the roster sits on the committee, as on a network of main validators. Pass exactly the validators of the block's epoch. Each roster entry names the validator id, its stake, its attestation key and its sortition root with the number of slots the root covers, exactly as get_validator_set serves them, and every signer must prove its committee membership against its root.
 
