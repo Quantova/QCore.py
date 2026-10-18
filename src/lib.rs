@@ -173,6 +173,14 @@ impl SigningSession {
         self.0.release(key, slot)
     }
 
+    fn export_state(&self) -> String {
+        self.0.export_state()
+    }
+
+    fn import_state(&mut self, state: &str) -> PyResult<()> {
+        self.0.import_state(state).map_err(PyValueError::new_err)
+    }
+
     fn release_pending(&mut self, key: &str) {
         self.0.release_pending(key)
     }

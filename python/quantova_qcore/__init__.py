@@ -517,6 +517,14 @@ class Client:
     def transaction(self, tx_id):
         return self._call("get_transaction", transaction_body(tx_id))
 
+    def save_session(self):
+        return self._session.export_state()
+
+    def restore_session(self, state):
+        if not isinstance(state, str):
+            raise ValueError("the saved session must be the string save_session returned")
+        self._session.import_state(state)
+
     def confirm_transaction(self, tx_id, roster):
         if not isinstance(tx_id, str):
             raise ValueError("the transaction id must be a string")
