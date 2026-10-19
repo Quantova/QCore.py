@@ -43,7 +43,7 @@ def an_environment_proxy_is_ignored():
             pass
 
         def do_POST(self):
-            payload = b'{"chain_id": "Q-dev-net-1"}'
+            payload = b'{"chain_id": "Q-dev-net-1", "protocol": 1}'
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))

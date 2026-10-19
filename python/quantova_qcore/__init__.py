@@ -51,6 +51,12 @@ from ._native import (
     check_gateway_json,
     testnet_rpc_url,
     testnet_chain_name,
+    gateway_protocol,
+    roster_commitment,
+    verify_next_roster,
+    verify_account,
+    testnet_roster_commitment,
+    mainnet_roster_commitment,
     testnet_genesis_hash,
     mainnet_genesis_hash,
     validity_blocks,
@@ -105,6 +111,12 @@ __all__ = [
     "build_typed_order_call",
     "order_layout_hash",
     "verify_finality",
+    "verify_next_roster",
+    "verify_account",
+    "roster_commitment",
+    "gateway_protocol",
+    "testnet_roster_commitment",
+    "mainnet_roster_commitment",
     "verify_event",
     "verify_transaction",
     "decode_event",
@@ -342,7 +354,8 @@ def _pinned_genesis(value):
 
 class Network:
     def __init__(self, name, chain_id=None, rpc_url=None, explorer_url=None,
-                 denomination=DENOMINATION, decimals=DECIMALS, is_mainnet=False, genesis_hash=None):
+                 denomination=DENOMINATION, decimals=DECIMALS, is_mainnet=False, genesis_hash=None,
+                 roster_commitment=None):
         self.name = name
         self.chain_id = chain_id
         self.rpc_url = rpc_url
@@ -351,19 +364,22 @@ class Network:
         self.decimals = decimals
         self.is_mainnet = is_mainnet is True
         self.genesis_hash = _pinned_genesis(genesis_hash)
+        self.roster_commitment = _pinned_genesis(roster_commitment)
 
     @classmethod
     def testnet(cls):
         return cls(name="testnet", chain_id=testnet_chain_name(),
                    rpc_url=testnet_rpc_url(),
                    explorer_url="https://qvmscan.io", is_mainnet=False,
-                   genesis_hash=testnet_genesis_hash())
+                   genesis_hash=testnet_genesis_hash(),
+                   roster_commitment=testnet_roster_commitment())
 
     @classmethod
     def mainnet(cls):
         return cls(name="mainnet", chain_id="Q-main-net-1", rpc_url=None,
                    explorer_url="https://qvmscan.io", is_mainnet=True,
-                   genesis_hash=mainnet_genesis_hash())
+                   genesis_hash=mainnet_genesis_hash(),
+                   roster_commitment=mainnet_roster_commitment())
 
     @classmethod
     def for_url(cls, base):
@@ -469,7 +485,13 @@ class Client:
             raise RuntimeError(_shown(message) if message else f"status {err.code}")
 
     def node_info(self):
-        return self._call("node_info", "{}", strict=True)
+        info = self._call("node_info", "{}", strict=True)
+        reported = info.get("protocol") if isinstance(info, dict) else None
+        if reported is None:
+            raise ValueError("the gateway does not report its protocol version, refusing to use it")
+        if isinstance(reported, bool) or reported != gateway_protocol():
+            raise ValueError(f"the gateway speaks protocol {reported!r} but this client supports protocol {gateway_protocol()}, refusing to use it")
+        return info
 
     def head(self):
         return self._call("head", "{}")
@@ -510,8 +532,13 @@ class Client:
         return outcome
 
     def trust_roster(self, genesis_hash, roster):
+        self.trust_roster_at(genesis_hash, 0, roster)
+
+    def trust_roster_at(self, genesis_hash, epoch, roster):
         if not isinstance(genesis_hash, str) or re.fullmatch(r"[0-9a-fA-F]{64}", genesis_hash) is None:
             raise ValueError("the genesis hash you trust must be 64 hex characters")
+        if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0:
+            raise ValueError("the roster epoch must be a whole number")
         roster_json = roster if isinstance(roster, str) else json.dumps(roster)
         try:
             members = json.loads(roster_json)
@@ -519,12 +546,52 @@ class Client:
             raise ValueError("the trusted validator roster is not valid JSON")
         if not isinstance(members, list) or not members:
             raise ValueError("a trusted validator roster must be a non empty list")
-        self._trusted_roster = roster_json
+        self._trusted_rosters = {epoch: roster_json}
         self._trusted_genesis = genesis_hash.lower()
 
+    def _anchor_pinned_roster(self):
+        if getattr(self, "_trusted_rosters", None) is not None:
+            return True
+        network = self.network
+        if network is None or network.genesis_hash is None or getattr(network, "roster_commitment", None) is None:
+            return False
+        answer = self._call("get_roster_proof", json.dumps({"epoch": 0}), strict=True)
+        members = json.dumps(answer.get("members") if isinstance(answer, dict) else None)
+        if roster_commitment(0, members) != network.roster_commitment:
+            raise RuntimeError("the gateway offers a genesis roster other than the one pinned for this network, refusing to trust it")
+        self.trust_roster_at(network.genesis_hash, 0, members)
+        return True
+
+    def _roster_for_epoch(self, chain_id, epoch):
+        if not self._anchor_pinned_roster():
+            return None
+        known = [e for e in self._trusted_rosters if e <= epoch]
+        if not known:
+            raise RuntimeError(f"the trusted roster starts after epoch {epoch}, so that epoch cannot be checked")
+        current = max(known)
+        roster = self._trusted_rosters[current]
+        while current < epoch:
+            nxt = current + 1
+            answer = self._call("get_roster_proof", json.dumps({"epoch": nxt}), strict=True)
+            if not isinstance(answer, dict) or not all(isinstance(answer.get(k), str) for k in ("header_bytes", "certificate", "proof")):
+                raise RuntimeError(f"the gateway gave no roster proof for epoch {nxt}")
+            members = json.dumps(answer.get("members"))
+            verify_next_roster(chain_id, self._trusted_genesis, current, roster, answer["header_bytes"], answer["certificate"], members, answer["proof"])
+            current = nxt
+            roster = members
+            self._trusted_rosters[current] = roster
+            while len(self._trusted_rosters) > 32:
+                del self._trusted_rosters[sorted(self._trusted_rosters)[1]]
+        return roster
+
+    def _certified_at(self, height):
+        finality = self._call("get_finality", json.dumps({"height": height}), strict=True)
+        if not isinstance(finality, dict) or not isinstance(finality.get("header_bytes"), str) or not isinstance(finality.get("certificate"), str):
+            raise RuntimeError(f"the gateway gave no finality proof for height {height}")
+        return _gateway_integer(finality.get("epoch"), "finality epoch"), finality["header_bytes"], finality["certificate"]
+
     def _verify_head(self, info):
-        roster = getattr(self, "_trusted_roster", None)
-        if roster is None:
+        if not self._anchor_pinned_roster():
             reported = info.get("chain_id") if isinstance(info, dict) and isinstance(info.get("chain_id"), str) else ""
             configured = (self.network.chain_id if self.network is not None else None) or getattr(self, "_expected_chain_id", None) or ""
             if (self.network is not None and self.network.is_mainnet) or _is_mainnet_chain(reported) or _is_mainnet_chain(configured):
@@ -535,14 +602,46 @@ class Client:
         head = _gateway_integer(info.get("head_height") if isinstance(info, dict) else None, "head height")
         name = info.get("chain_id") if isinstance(info.get("chain_id"), str) else ""
         chain_id = chain_id_from_name(name)
-        finality = self._call("get_finality", json.dumps({"height": head}), strict=True)
-        if not isinstance(finality, dict) or not isinstance(finality.get("header_bytes"), str) or not isinstance(finality.get("certificate"), str):
-            raise RuntimeError("the gateway gave no finality proof for the head it reports, refusing to sign")
-        verified = _loads(verify_finality(chain_id, self._trusted_genesis, finality["header_bytes"], finality["certificate"], roster))
+        epoch, header, certificate = self._certified_at(head)
+        roster = self._roster_for_epoch(chain_id, epoch)
+        verified = _loads(verify_finality(chain_id, self._trusted_genesis, header, certificate, roster))
         if int(verified["height"]) != head:
             raise RuntimeError(
                 f"the gateway reports head {head} but its finality proof is for height {verified['height']}, refusing to sign"
             )
+
+    def verified_account(self, address):
+        if not isinstance(address, str):
+            raise ValueError("the address must be a string")
+        info = self.node_info()
+        name = info.get("chain_id") if isinstance(info.get("chain_id"), str) else ""
+        chain_id = chain_id_from_name(name)
+        answer = self._call("get_account_proof", json.dumps({"address": address}), strict=True)
+        if not isinstance(answer, dict) or not all(isinstance(answer.get(k), str) for k in ("header_bytes", "certificate", "proof")):
+            raise RuntimeError("the gateway gave no account proof")
+        epoch = _gateway_integer(answer.get("epoch"), "account proof epoch")
+        roster = self._roster_for_epoch(chain_id, epoch)
+        if roster is None:
+            raise RuntimeError("a verified balance needs a trusted validator roster, call trust_roster first")
+        verified = _loads(verify_account(chain_id, self._trusted_genesis, epoch, roster, address, answer["header_bytes"], answer["certificate"], answer["proof"]))
+        return {"address": verified["address"], "height": int(verified["height"]), "exists": verified["exists"] is True,
+                "balance": int(verified["balance"]), "nonce": int(verified["nonce"])}
+
+    def confirm_transaction_trusted(self, tx_id):
+        if not isinstance(tx_id, str):
+            raise ValueError("the transaction id must be a string")
+        status = self._call("get_transaction", transaction_body(tx_id))
+        if not isinstance(status, dict) or status.get("status") != "finalised":
+            raise RuntimeError("the transaction is not reported as finalised")
+        height = _gateway_integer(status.get("height"), "transaction height")
+        info = self.node_info()
+        name = info.get("chain_id") if isinstance(info.get("chain_id"), str) else ""
+        chain_id = chain_id_from_name(name)
+        epoch, _, _ = self._certified_at(height)
+        roster = self._roster_for_epoch(chain_id, epoch)
+        if roster is None:
+            raise RuntimeError("a verified confirmation needs a trusted validator roster, call trust_roster first")
+        return self.confirm_transaction(tx_id, self._trusted_genesis, roster)
 
     def _validity(self, info):
         self._verify_head(info)
@@ -579,7 +678,10 @@ class Client:
         return transfer_fee, fee
 
     def transaction(self, tx_id):
-        return self._call("get_transaction", transaction_body(tx_id))
+        status = self._call("get_transaction", transaction_body(tx_id))
+        if isinstance(status, dict) and status.get("status") == "finalised" and self._anchor_pinned_roster():
+            self.confirm_transaction_trusted(tx_id)
+        return status
 
     def save_session(self):
         return self._session.export_state()

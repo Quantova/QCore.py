@@ -131,6 +131,11 @@ fn testnet_rpc_url() -> &'static str {
 }
 
 #[pyfunction]
+fn gateway_protocol() -> u32 {
+    qcore::GATEWAY_PROTOCOL
+}
+
+#[pyfunction]
 fn testnet_genesis_hash() -> Option<String> {
     qcore::TESTNET_GENESIS_HASH.map(|hash| qcore::json::to_hex(&hash))
 }
@@ -834,6 +839,100 @@ fn finalized_json(h: &qcore::finality::FinalizedHeader) -> String {
     .render()
 }
 
+fn hash32(hex: &str, what: &str) -> PyResult<[u8; 32]> {
+    qcore::json::from_hex(hex)
+        .map_err(PyValueError::new_err)?
+        .try_into()
+        .map_err(|_| PyValueError::new_err(format!("the {what} must be 32 bytes of hex")))
+}
+
+#[pyfunction]
+pub fn roster_commitment(epoch: u64, roster_json: &str) -> PyResult<String> {
+    let roster = parse_roster(roster_json).map_err(PyValueError::new_err)?;
+    Ok(qcore::json::to_hex(&qcore::finality::roster_commitment_of(
+        epoch, &roster,
+    )))
+}
+
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_next_roster(
+    chain_id: u64,
+    genesis_hex: &str,
+    current_epoch: u64,
+    current_roster_json: &str,
+    header_hex: &str,
+    certificate_hex: &str,
+    next_roster_json: &str,
+    proof_hex: &str,
+) -> PyResult<u64> {
+    let current = qcore::finality::VerifiedRoster {
+        epoch: current_epoch,
+        members: parse_roster(current_roster_json).map_err(PyValueError::new_err)?,
+    };
+    let next = qcore::finality::verify_next_roster(
+        chain_id,
+        &hash32(genesis_hex, "genesis hash")?,
+        &current,
+        &qcore::json::from_hex(header_hex).map_err(PyValueError::new_err)?,
+        &qcore::json::from_hex(certificate_hex).map_err(PyValueError::new_err)?,
+        parse_roster(next_roster_json).map_err(PyValueError::new_err)?,
+        &qcore::json::from_hex(proof_hex).map_err(PyValueError::new_err)?,
+    )
+    .map_err(PyValueError::new_err)?;
+    Ok(next.epoch)
+}
+
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_account(
+    chain_id: u64,
+    genesis_hex: &str,
+    epoch: u64,
+    roster_json: &str,
+    address: &str,
+    header_hex: &str,
+    certificate_hex: &str,
+    proof_hex: &str,
+) -> PyResult<String> {
+    let roster = qcore::finality::VerifiedRoster {
+        epoch,
+        members: parse_roster(roster_json).map_err(PyValueError::new_err)?,
+    };
+    let verified = qcore::finality::verify_account(
+        chain_id,
+        &hash32(genesis_hex, "genesis hash")?,
+        &roster,
+        address,
+        &qcore::json::from_hex(header_hex).map_err(PyValueError::new_err)?,
+        &qcore::json::from_hex(certificate_hex).map_err(PyValueError::new_err)?,
+        &qcore::json::from_hex(proof_hex).map_err(PyValueError::new_err)?,
+    )
+    .map_err(PyValueError::new_err)?;
+    let (exists, balance, nonce) = match &verified.account {
+        Some(account) => (true, account.balance, account.nonce),
+        None => (false, 0, 0),
+    };
+    Ok(qcore::json::object(vec![
+        ("address", qcore::json::Json::str(&verified.address)),
+        ("height", qcore::json::Json::Int(verified.header.height)),
+        ("exists", qcore::json::Json::Bool(exists)),
+        ("balance", qcore::json::Json::str(balance.to_string())),
+        ("nonce", qcore::json::Json::str(nonce.to_string())),
+    ])
+    .render())
+}
+
+#[pyfunction]
+fn testnet_roster_commitment() -> Option<String> {
+    qcore::TESTNET_ROSTER_COMMITMENT.map(|hash| qcore::json::to_hex(&hash))
+}
+
+#[pyfunction]
+fn mainnet_roster_commitment() -> Option<String> {
+    qcore::MAINNET_ROSTER_COMMITMENT.map(|hash| qcore::json::to_hex(&hash))
+}
+
 #[pyfunction]
 pub fn verify_finality(
     chain_id: u64,
@@ -916,6 +1015,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(check_gateway_json, m)?)?;
     m.add_function(wrap_pyfunction!(testnet_rpc_url, m)?)?;
     m.add_function(wrap_pyfunction!(testnet_chain_name, m)?)?;
+    m.add_function(wrap_pyfunction!(gateway_protocol, m)?)?;
+    m.add_function(wrap_pyfunction!(roster_commitment, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_next_roster, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_account, m)?)?;
+    m.add_function(wrap_pyfunction!(testnet_roster_commitment, m)?)?;
+    m.add_function(wrap_pyfunction!(mainnet_roster_commitment, m)?)?;
     m.add_function(wrap_pyfunction!(testnet_genesis_hash, m)?)?;
     m.add_function(wrap_pyfunction!(mainnet_genesis_hash, m)?)?;
     m.add_function(wrap_pyfunction!(validity_blocks, m)?)?;
