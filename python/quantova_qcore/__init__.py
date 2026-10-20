@@ -49,6 +49,7 @@ from ._native import (
     head_ceiling,
     bounded_valid_until,
     check_gateway_json,
+    check_endpoint,
     testnet_rpc_url,
     testnet_chain_name,
     gateway_protocol,
@@ -134,6 +135,7 @@ __all__ = [
     "head_ceiling",
     "bounded_valid_until",
     "check_gateway_json",
+    "check_endpoint",
     "testnet_rpc_url",
     "testnet_chain_name",
     "validity_blocks",
@@ -411,6 +413,7 @@ class Client:
             base = str(target)
             self.network = network if isinstance(network, Network) else Network.for_url(base)
         self.base = _require_safe_transport(base).rstrip("/")
+        check_endpoint(self.base)
         self._pinned_chain = self.network.chain_id if self.network else None
         network_genesis = self.network.genesis_hash if self.network else None
         option_genesis = _pinned_genesis(genesis_hash)

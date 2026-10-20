@@ -126,6 +126,11 @@ fn check_gateway_json(response: &str) -> PyResult<()> {
 }
 
 #[pyfunction]
+fn check_endpoint(base: &str) -> PyResult<()> {
+    qcore::check_endpoint(base).map_err(PyValueError::new_err)
+}
+
+#[pyfunction]
 fn testnet_rpc_url() -> &'static str {
     qcore::TESTNET_RPC_URL
 }
@@ -1013,6 +1018,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(head_ceiling, m)?)?;
     m.add_function(wrap_pyfunction!(bounded_valid_until, m)?)?;
     m.add_function(wrap_pyfunction!(check_gateway_json, m)?)?;
+    m.add_function(wrap_pyfunction!(check_endpoint, m)?)?;
     m.add_function(wrap_pyfunction!(testnet_rpc_url, m)?)?;
     m.add_function(wrap_pyfunction!(testnet_chain_name, m)?)?;
     m.add_function(wrap_pyfunction!(gateway_protocol, m)?)?;

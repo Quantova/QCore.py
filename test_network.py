@@ -33,7 +33,7 @@ def throws(label, fn):
 def main():
     testnet = Network.testnet()
     ok("testnet chain id", testnet.chain_id == "Q-test-net-01")
-    ok("testnet rpc url", testnet.rpc_url == "https://rpc-testnet.quantova.org")
+    ok("testnet rpc url", testnet.rpc_url == "https://q-test-net-01.quantova.org")
     ok("testnet denomination", testnet.denomination == "Quon")
     ok("testnet decimals are six", testnet.decimals == 6)
     ok("testnet is not mainnet", testnet.is_mainnet is False)
@@ -53,7 +53,9 @@ def main():
         acked = None
     ok("mainnet client opens with acknowledgement", acked is not None)
 
-    over_url = Client("https://rpc-testnet.quantova.org")
+    throws("the retired testnet host is refused", lambda: Client("https://rpc-testnet.quantova.org"))
+    throws("the retired testnet host is refused in any spelling", lambda: Client("https://RPC-Testnet.quantova.org./v1"))
+    over_url = Client("https://q-test-net-01.quantova.org")
     ok("a plain url client is not forced to acknowledge mainnet by any gateway string",
        over_url._guard_mainnet() is None)
     hostile_mainnet = Client("https://rpc.quantova.org", network=Network.mainnet())
