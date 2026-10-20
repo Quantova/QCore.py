@@ -49,6 +49,12 @@ def fail(message):
     print("FAIL " + message)
     sys.exit(1)
 
+UNSIGNED_TAIL_HEX = 2 * (1 + 8 + 3309)
+
+
+def unsigned(tx_hex):
+    return tx_hex[:len(tx_hex) - UNSIGNED_TAIL_HEX]
+
 def main():
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -70,7 +76,7 @@ def main():
         fail("register must read the nonce of the account it registers")
     transfer_signed = json.loads(qcore.sign_transfer(
         seed, 0, qcore.address(seed, 1), 1000, 0, 100, qcore.chain_id_from_name("Q-dev-net-1"), 310, 0, "00" * 32))
-    if signed["tx_hex"] == transfer_signed["tx_hex"]:
+    if unsigned(signed["tx_hex"]) == unsigned(transfer_signed["tx_hex"]):
         fail("a registration must not be identical to a transfer")
 
     state["fee"] = "5000"

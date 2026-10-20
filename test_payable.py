@@ -25,6 +25,12 @@ LOCAL_CHAIN_ID = qcore.local_chain_id()
 MAINNET_CHAIN_ID = qcore.mainnet_chain_id()
 TESTNET_CHAIN_ID = qcore.testnet_chain_id()
 
+UNSIGNED_TAIL_HEX = 2 * (1 + 8 + 3309)
+
+
+def unsigned(tx_hex):
+    return tx_hex[:len(tx_hex) - UNSIGNED_TAIL_HEX]
+
 def main():
     seed = bytearray.fromhex("0b" * 32)
     target = qcore.address(seed, 1)
@@ -32,26 +38,21 @@ def main():
     plain = json.loads(qcore.sign_call(seed, 0, target, "", 3, 21000, 9000, LOCAL_CHAIN_ID, 300, 500, 0, "ab" * 32))
     payable = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 9000, 0, LOCAL_CHAIN_ID, 300, 500, 0, "ab" * 32))
     ok("a payable call with no value on the local chain matches a plain call",
-       payable["tx_hex"] == plain["tx_hex"])
-    ok("a payable call with no value on the local chain matches a plain call's id",
-       payable["tx_id"] == plain["tx_id"])
+       unsigned(payable["tx_hex"]) == unsigned(plain["tx_hex"]))
 
     unpaid = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 9000, 0, LOCAL_CHAIN_ID, 300, 500, 0, "ab" * 32))
     paid = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 9000, 4200, LOCAL_CHAIN_ID, 300, 500, 0, "ab" * 32))
-    ok("a nonzero value changes the signed bytes", unpaid["tx_hex"] != paid["tx_hex"])
-    ok("a nonzero value changes the transaction id", unpaid["tx_id"] != paid["tx_id"])
+    ok("a nonzero value changes the signed bytes", unsigned(unpaid["tx_hex"]) != unsigned(paid["tx_hex"]))
 
     on_local = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 9000, 0, LOCAL_CHAIN_ID, 300, 500, 0, "ab" * 32))
     on_mainnet = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 9000, 0, MAINNET_CHAIN_ID, 300, 500, 0, "ab" * 32))
     on_testnet = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 9000, 0, TESTNET_CHAIN_ID, 300, 500, 0, "ab" * 32))
-    ok("a different chain id changes the signed bytes", on_local["tx_hex"] != on_mainnet["tx_hex"])
-    ok("mainnet and testnet chain ids sign to different bytes", on_mainnet["tx_hex"] != on_testnet["tx_hex"])
-    ok("a different chain id changes the transaction id", on_local["tx_id"] != on_mainnet["tx_id"])
+    ok("a different chain id changes the signed bytes", unsigned(on_local["tx_hex"]) != unsigned(on_mainnet["tx_hex"]))
+    ok("mainnet and testnet chain ids sign to different bytes", unsigned(on_mainnet["tx_hex"]) != unsigned(on_testnet["tx_hex"]))
 
     upper = json.loads(qcore.sign_payable_call(seed, 0, target, "", 3, 21000, 9000, 10, TESTNET_CHAIN_ID, 300, 500, 0, "ab" * 32))
     lower = json.loads(qcore.sign_payable_call(seed, 0, target.lower(), "", 3, 21000, 9000, 10, TESTNET_CHAIN_ID, 300, 500, 0, "ab" * 32))
-    ok("the target address case never changes the signed bytes", upper["tx_hex"] == lower["tx_hex"])
-    ok("the target address case never changes the transaction id", upper["tx_id"] == lower["tx_id"])
+    ok("the target address case never changes the signed bytes", unsigned(upper["tx_hex"]) == unsigned(lower["tx_hex"]))
     ok("the from field renders as an uppercase Q1 address", upper["from"].startswith("Q1"))
 
     for bad in ("not an address", "", "Q1zzzz", target[:-1] + ("q" if target[-1] != "q" else "p")):

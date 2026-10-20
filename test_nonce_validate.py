@@ -52,6 +52,12 @@ def fail(message):
     print("FAIL " + message)
     sys.exit(1)
 
+UNSIGNED_TAIL_HEX = 2 * (1 + 8 + 3309)
+
+
+def unsigned(tx_hex):
+    return tx_hex[:len(tx_hex) - UNSIGNED_TAIL_HEX]
+
 def main():
     for bad in (1.5, 4.9, 2.0, -1, 2 ** 64, "1.5", "5", " 5", "+5", "5_0", "\u0665", True):
         try:
@@ -96,10 +102,10 @@ def main():
     signed, _ = fresh.transfer(seed, 0, to, "1000", "1000000")
     chain_id = qcore.chain_id_from_name("Q-dev-net-1")
     expected = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 310, 0, "00" * 32))
-    if signed["tx_hex"] != expected["tx_hex"]:
+    if unsigned(signed["tx_hex"]) != unsigned(expected["tx_hex"]):
         fail("a client transfer did not expire 300 blocks past the head")
     later = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 311, 0, "00" * 32))
-    if later["tx_hex"] == expected["tx_hex"]:
+    if unsigned(later["tx_hex"]) == unsigned(expected["tx_hex"]):
         fail("the validity window is not part of what is signed")
     try:
         qcore.sign_transfer(seed, 0, to, 1000, 0, 500, chain_id, 0, 0, "00" * 32)
@@ -142,12 +148,12 @@ def main():
             fail("unclear held nonce error: " + str(err))
     signed, _ = stuck.transfer(seed, 0, to, "1000", "1000000", expected_nonce=3)
     again = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 3, 500, chain_id, 310, 0, "00" * 32))
-    if signed["tx_hex"] != again["tx_hex"]:
+    if unsigned(signed["tx_hex"]) != unsigned(again["tx_hex"]):
         fail("a submission that never landed pushed the next one past the nonce the chain admits")
     state["nonce"] = 9
     signed, _ = stuck.transfer(seed, 0, to, "1000", "1000000")
     at_nine = json.loads(qcore.sign_transfer(seed, 0, to, 1000, 9, 500, chain_id, 310, 0, "00" * 32))
-    if signed["tx_hex"] != at_nine["tx_hex"]:
+    if unsigned(signed["tx_hex"]) != unsigned(at_nine["tx_hex"]):
         fail("a gateway nonce above the local one must be signed at, not refused")
     if stuck._session.next_nonce(signed["from"]) != 10:
         fail("the local next nonce did not follow the highest nonce seen")

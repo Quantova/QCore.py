@@ -1,6 +1,7 @@
 # Copyright 2026 Quantova Inc
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 
+import json
 import os
 import sys
 
@@ -9,6 +10,12 @@ try:
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
     import quantova_qcore as qcore
+
+UNSIGNED_TAIL_HEX = 2 * (1 + 8 + 3309)
+
+
+def unsigned(tx_hex):
+    return tx_hex[:len(tx_hex) - UNSIGNED_TAIL_HEX]
 
 def main():
     seed = bytearray.fromhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
@@ -20,7 +27,8 @@ def main():
     recipient = qcore.address(seed, 1)
     first = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310, 0, "ab" * 32)
     second = qcore.sign_transfer(seed, 0, recipient, 1000, 3, 500, chain, 310, 0, "ab" * 32)
-    assert first == second, "signing stays deterministic after the seed routes through wiped scratch"
+    assert unsigned(json.loads(first)["tx_hex"]) == unsigned(json.loads(second)["tx_hex"]), \
+        "signing binds the same body after the seed routes through wiped scratch"
 
     phrase_bytes = qcore.mnemonic_from_seed(seed)
     assert isinstance(phrase_bytes, bytearray), "the phrase is returned as a bytearray the caller can wipe"

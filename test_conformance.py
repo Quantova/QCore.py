@@ -124,11 +124,17 @@ def transaction_vector():
     again = json.loads(qcore.sign_call(
         bytearray.fromhex(v["master_seed"]), v["sender_index"], target, v["args"], v["nonce"], v["meter_limit"], v["fee"],
         qcore.local_chain_id(), b["valid_until"], int(b["transfer_fee"]), 0, "00" * 32))
-    check("signing is deterministic", again["tx_hex"] == signed["tx_hex"], True)
-    check("the transaction id matches the bounded vector", bech32_equal(signed["tx_id"], b["tx_id"]), True)
-    check("the signed bytes match the bounded vector byte for byte", signed["tx_hex"], b["tx_hex"])
+    check("signing twice binds the same body", unsigned(again["tx_hex"]) == unsigned(signed["tx_hex"]), True)
+    check("each signing draws fresh randomness", again["tx_hex"] != signed["tx_hex"], True)
+    check("the signed body matches the bounded vector byte for byte", unsigned(signed["tx_hex"]), unsigned(b["tx_hex"]))
     check("the transaction id is a qtx identifier",
           bool(re.match(r"^qtx1[0-9a-z]+$", signed["tx_id"], re.IGNORECASE)), True)
+
+UNSIGNED_TAIL_HEX = 2 * (1 + 8 + 3309)
+
+
+def unsigned(tx_hex):
+    return tx_hex[:len(tx_hex) - UNSIGNED_TAIL_HEX]
 
 def main():
     address_vector()
