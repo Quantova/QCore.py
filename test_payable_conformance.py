@@ -107,11 +107,11 @@ def payable_vector():
         lambda: qcore.sign_payable_call(
             bytearray.fromhex(v["master_seed"]), v["sender_index"], target, v["args"],
             v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"]), 0,
-            int(b["transfer_fee"]), 0, "00" * 32)), True)
+            v["fee"], 0, "00" * 32)), True)
     signed = json.loads(qcore.sign_payable_call(
         bytearray.fromhex(v["master_seed"]), v["sender_index"], target, v["args"],
         v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"]), b["valid_until"],
-        int(b["transfer_fee"]), 0, "00" * 32))
+        v["fee"], 0, "00" * 32))
     check("the signer address is the vector sender", bech32_equal(signed["from"], v["sender"]), True)
     check("the from field renders uppercase Q1", signed["from"].startswith("Q1"), True)
     check("the signed body matches the bounded QCore.js vector byte for byte",
@@ -133,14 +133,14 @@ def payable_vector():
     again = json.loads(qcore.sign_payable_call(
         bytearray.fromhex(v["master_seed"]), v["sender_index"], target, v["args"],
         v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"]), b["valid_until"],
-        int(b["transfer_fee"]), 0, "00" * 32))
+        v["fee"], 0, "00" * 32))
     check("signing twice binds the same body", unsigned(again["tx_hex"]) == unsigned(signed["tx_hex"]), True)
     check("each signing draws fresh randomness", again["tx_hex"] != signed["tx_hex"], True)
 
     lower = json.loads(qcore.sign_payable_call(
         bytearray.fromhex(v["master_seed"]), v["sender_index"], target.lower(), v["args"],
         v["nonce"], v["meter_limit"], v["fee"], v["value"], int(v["chain_id"]), b["valid_until"],
-        int(b["transfer_fee"]), 0, "00" * 32))
+        v["fee"], 0, "00" * 32))
     check("a lowercase target signs the same bytes", unsigned(lower["tx_hex"]) == unsigned(signed["tx_hex"]), True)
 
 UNSIGNED_TAIL_HEX = 2 * (1 + 8 + 3309)

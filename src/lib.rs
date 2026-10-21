@@ -592,6 +592,12 @@ fn sign_register(
 }
 
 #[pyfunction]
+fn deploy_fee_quon(node_info: &str) -> PyResult<u128> {
+    let info = qcore::parse_node_info(node_info).map_err(PyValueError::new_err)?;
+    qcore::deploy_fee_of(&info).map_err(PyValueError::new_err)
+}
+
+#[pyfunction]
 fn vm_call_fee(transfer_fee: u128, meter_limit: u64) -> u128 {
     qcore::vm_call_fee(transfer_fee, meter_limit)
 }
@@ -1064,6 +1070,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(verify_transaction, m)?)?;
     m.add_function(wrap_pyfunction!(decode_event, m)?)?;
     m.add_function(wrap_pyfunction!(vm_call_fee, m)?)?;
+    m.add_function(wrap_pyfunction!(deploy_fee_quon, m)?)?;
     m.add_function(wrap_pyfunction!(check_valid_until, m)?)?;
     m.add_function(wrap_pyfunction!(chain_id_from_name, m)?)?;
     m.add_function(wrap_pyfunction!(local_chain_id, m)?)?;

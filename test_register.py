@@ -33,7 +33,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/node_info":
             send({"chain_id": "Q-dev-net-1", "head_height": 10, "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000", "denomination": "Quon",
-                  "fee": {"transfer_quon": state["fee"], "quon_per_qtov": "1000000"}, "version": "test", "protocol": 1})
+                  "fee": {"transfer_quon": state["fee"], "quon_per_qtov": "1000000"}, "version": "test", "protocol": 2})
         elif self.path == "/v1/get_account":
             state["asked_account"] = body["address"]
             send({"address": body["address"], "nonce": state["nonce"], "balance": "5000", "scheme": 1, "has_key": False})

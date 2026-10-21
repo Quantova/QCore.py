@@ -33,7 +33,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/node_info":
             send({"chain_id": "Q-dev-net-1", "head_height": state["head"], "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000", "denomination": "Quon",
-                  "fee": {"transfer_quon": "500", "quon_per_qtov": "1000000"}, "version": "test", "protocol": 1})
+                  "fee": {"transfer_quon": "500", "quon_per_qtov": "1000000"}, "version": "test", "protocol": 2})
         elif self.path == "/v1/get_account":
             reply = {"nonce": state["nonce"], "balance": "0", "scheme": 1, "has_key": True}
             if not state.get("anonymous"):
@@ -130,11 +130,11 @@ def main():
         fail("a contradicted expected nonce still reached submit")
     state["nonce"] = 0
     try:
-        client.call(seed, 0, to, "01", 21000, "1000", expected_nonce=0)
-        fail("a call whose meter fee passes the ceiling was signed")
+        client.call(seed, 0, to, "01", 21000, "499", expected_nonce=0)
+        fail("a call whose locked fee passes the ceiling was signed")
     except ValueError as err:
         if "above the maximum" not in str(err):
-            fail("unclear meter fee error: " + str(err))
+            fail("unclear locked fee error: " + str(err))
     client.call(seed, 0, to, "01", 21000, "1000000", expected_nonce=0)
 
     stuck = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")

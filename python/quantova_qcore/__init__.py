@@ -36,6 +36,7 @@ from ._native import (
     verify_transaction,
     decode_event,
     vm_call_fee,
+    deploy_fee_quon,
     check_valid_until,
     chain_id_from_name,
     local_chain_id,
@@ -122,6 +123,7 @@ __all__ = [
     "verify_transaction",
     "decode_event",
     "vm_call_fee",
+    "deploy_fee_quon",
     "check_valid_until",
     "chain_id_from_name",
     "local_chain_id",
@@ -671,9 +673,11 @@ class Client:
             raise RuntimeError(f"no genesis hash is pinned for the public chain {_shown(chain)}, pin the network genesis before signing")
         return until, head, reported
 
-    def _call_fee(self, info, meter, ceiling, max_fee):
+    def _call_fee(self, info, meter, ceiling, max_fee, deploy=False):
         transfer_fee = _transfer_fee(info)
         fee = vm_call_fee(transfer_fee, meter)
+        if deploy:
+            fee += deploy_fee_quon(json.dumps(info))
         if fee > ceiling:
             raise ValueError(
                 f"the fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
@@ -811,7 +815,8 @@ class Client:
             info = self.node_info()
             self._guard_mainnet()
             chain_id = self._signing_chain_id(info)
-            transfer_fee, fee = self._call_fee(info, meter, ceiling, max_fee)
+            deploy = bool(targets) and targets[0] == vm_deploy_address()
+            transfer_fee, fee = self._call_fee(info, meter, ceiling, max_fee, deploy)
             until, head, genesis = self._validity(info)
             nonce = self._account_slot(sender, expected_nonce)
             signed = _loads(sign(nonce, meter, fee, chain_id, until, transfer_fee, head, genesis))
