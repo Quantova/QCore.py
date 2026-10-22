@@ -225,6 +225,14 @@ impl SigningSession {
     fn is_held(&self, key: &str, slot: u64) -> bool {
         self.0.is_held(key, slot)
     }
+
+    fn head_floor(&self, chain: &str) -> Option<(u64, u64)> {
+        self.0.head_floor(chain)
+    }
+
+    fn note_head(&mut self, chain: &str, height: u64, wall_secs: u64) {
+        self.0.note_head(chain, height, wall_secs)
+    }
 }
 
 fn addr32(hex: &str) -> PyResult<[u8; 32]> {
@@ -722,7 +730,18 @@ fn order_layout_hash(selector_hex: &str, fields_json: &str) -> PyResult<String> 
     )))
 }
 
+fn signed_orders() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, Vec<u8>>> {
+    static SIGNED: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, Vec<u8>>>,
+    > = std::sync::OnceLock::new();
+    SIGNED
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[pyfunction]
+#[pyo3(signature = (chain_id, contract, selector_hex, layout_hash_hex, scheme_off, ptr_off, expiry_off, region_off, fields_json, owner_seed_bytes, owner_index, nonce, expiry, resign = false))]
 #[allow(clippy::too_many_arguments)]
 fn build_typed_order_call(
     chain_id: u64,
@@ -738,7 +757,20 @@ fn build_typed_order_call(
     owner_index: u64,
     nonce: u64,
     expiry: u64,
+    resign: bool,
 ) -> PyResult<String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| PyRuntimeError::new_err("the system clock is before 1970"))?
+        .as_secs();
+    qcore::contract::check_order_expiry(expiry, now).map_err(PyValueError::new_err)?;
+    let owner = seed(owner_seed_bytes)?;
+    if !qcore::valid_address(contract) {
+        return Err(PyValueError::new_err("the contract is not a Q1 address"));
+    }
+    let canonical = contract.to_ascii_uppercase();
+    let signer = qcore::json::to_hex(&qcore::contract::order_signer(&owner, owner_index));
+    let order_key = format!("{chain_id}/{canonical}/{signer}/{nonce}");
     let selector: [u8; 4] = qcore::json::from_hex(selector_hex)
         .map_err(PyValueError::new_err)?
         .try_into()
@@ -756,12 +788,25 @@ fn build_typed_order_call(
         expiry_off,
         region_off,
         &fields,
-        &*seed(owner_seed_bytes)?,
+        &owner,
         owner_index,
         nonce,
         expiry,
     )
     .map_err(PyValueError::new_err)?;
+    {
+        let mut signed = signed_orders();
+        match signed.get(&order_key) {
+            Some(message) if *message != order.message && !resign => {
+                return Err(PyRuntimeError::new_err(format!(
+                    "an order with other terms was already signed at order nonce {nonce} for this contract and signer, one order nonce carries one order, pass resign=True only when the first can never be used"
+                )))
+            }
+            _ => {
+                signed.insert(order_key, order.message.clone());
+            }
+        }
+    }
     Ok(qcore::json::object(vec![
         (
             "call_args",
@@ -870,6 +915,7 @@ pub fn roster_commitment(epoch: u64, roster_json: &str) -> PyResult<String> {
 pub fn verify_next_roster(
     chain_id: u64,
     genesis_hex: &str,
+    epoch_length: u64,
     current_epoch: u64,
     current_roster_json: &str,
     header_hex: &str,
@@ -884,6 +930,7 @@ pub fn verify_next_roster(
     let next = qcore::finality::verify_next_roster(
         chain_id,
         &hash32(genesis_hex, "genesis hash")?,
+        epoch_length,
         &current,
         &qcore::json::from_hex(header_hex).map_err(PyValueError::new_err)?,
         &qcore::json::from_hex(certificate_hex).map_err(PyValueError::new_err)?,
@@ -899,6 +946,7 @@ pub fn verify_next_roster(
 pub fn verify_account(
     chain_id: u64,
     genesis_hex: &str,
+    epoch_length: u64,
     epoch: u64,
     roster_json: &str,
     address: &str,
@@ -913,6 +961,7 @@ pub fn verify_account(
     let verified = qcore::finality::verify_account(
         chain_id,
         &hash32(genesis_hex, "genesis hash")?,
+        epoch_length,
         &roster,
         address,
         &qcore::json::from_hex(header_hex).map_err(PyValueError::new_err)?,
@@ -932,6 +981,114 @@ pub fn verify_account(
         ("nonce", qcore::json::Json::str(nonce.to_string())),
     ])
     .render())
+}
+
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_finality_in_epoch(
+    chain_id: u64,
+    genesis_hex: &str,
+    epoch_length: u64,
+    epoch: u64,
+    header_hex: &str,
+    certificate_hex: &str,
+    roster_json: &str,
+) -> PyResult<String> {
+    let roster = qcore::finality::VerifiedRoster {
+        epoch,
+        members: parse_roster(roster_json).map_err(PyValueError::new_err)?,
+    };
+    let verified = qcore::finality::verify_finality_in_epoch(
+        chain_id,
+        &hash32(genesis_hex, "genesis hash")?,
+        epoch_length,
+        &roster,
+        &qcore::json::from_hex(header_hex).map_err(PyValueError::new_err)?,
+        &qcore::json::from_hex(certificate_hex).map_err(PyValueError::new_err)?,
+    )
+    .map_err(PyValueError::new_err)?;
+    Ok(finalized_json(&verified))
+}
+
+#[pyfunction]
+fn header_height(header_hex: &str) -> PyResult<u64> {
+    let header = qcore::json::from_hex(header_hex).map_err(PyValueError::new_err)?;
+    qcore::finality::header_height(&header).map_err(PyValueError::new_err)
+}
+
+#[pyfunction]
+fn transaction_kind(leaf_hex: &str) -> PyResult<&'static str> {
+    let leaf = qcore::json::from_hex(leaf_hex).map_err(PyValueError::new_err)?;
+    Ok(
+        match qcore::finality::transaction_kind(&leaf).map_err(PyValueError::new_err)? {
+            qcore::finality::TxKind::Transfer => "transfer",
+            qcore::finality::TxKind::Call => "call",
+        },
+    )
+}
+
+#[pyfunction]
+fn index_fits_path(index: u64, steps_json: &str) -> PyResult<bool> {
+    let steps = parse_steps(steps_json).map_err(PyValueError::new_err)?;
+    Ok(qcore::finality::index_fits_path(index, &steps))
+}
+
+#[pyfunction]
+fn testnet_epoch_length() -> Option<u64> {
+    qcore::TESTNET_EPOCH_LENGTH
+}
+
+#[pyfunction]
+fn mainnet_epoch_length() -> Option<u64> {
+    qcore::MAINNET_EPOCH_LENGTH
+}
+
+#[pyfunction]
+fn testnet_genesis_secs() -> u64 {
+    qcore::TESTNET_GENESIS_SECS
+}
+
+#[pyfunction]
+fn testnet_blocks_per_sec() -> u64 {
+    qcore::TESTNET_BLOCKS_PER_SEC
+}
+
+#[pyfunction]
+fn response_cap(method: &str) -> usize {
+    qcore::response_cap(method)
+}
+
+#[pyfunction]
+#[pyo3(signature = (genesis_secs, blocks_per_sec, verified, head, wall_secs, floor, floor_age_secs))]
+fn bounded_valid_until_for(
+    genesis_secs: Option<u64>,
+    blocks_per_sec: Option<u64>,
+    verified: bool,
+    head: u64,
+    wall_secs: u64,
+    floor: Option<u64>,
+    floor_age_secs: u64,
+) -> PyResult<u64> {
+    let clock = match (genesis_secs, blocks_per_sec) {
+        (Some(genesis), Some(rate)) => {
+            Some(qcore::ChainClock::new(genesis, rate).map_err(PyValueError::new_err)?)
+        }
+        (None, None) => None,
+        _ => {
+            return Err(PyValueError::new_err(
+                "a chain clock needs both a genesis time and a block rate",
+            ))
+        }
+    };
+    qcore::bounded_valid_until_for(
+        clock.as_ref(),
+        verified,
+        head,
+        wall_secs,
+        floor,
+        floor_age_secs,
+    )
+    .map_err(PyValueError::new_err)
 }
 
 #[pyfunction]
@@ -1066,6 +1223,16 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(build_typed_order_call, m)?)?;
     m.add_function(wrap_pyfunction!(order_layout_hash, m)?)?;
     m.add_function(wrap_pyfunction!(verify_finality, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_finality_in_epoch, m)?)?;
+    m.add_function(wrap_pyfunction!(header_height, m)?)?;
+    m.add_function(wrap_pyfunction!(transaction_kind, m)?)?;
+    m.add_function(wrap_pyfunction!(index_fits_path, m)?)?;
+    m.add_function(wrap_pyfunction!(testnet_epoch_length, m)?)?;
+    m.add_function(wrap_pyfunction!(mainnet_epoch_length, m)?)?;
+    m.add_function(wrap_pyfunction!(testnet_genesis_secs, m)?)?;
+    m.add_function(wrap_pyfunction!(testnet_blocks_per_sec, m)?)?;
+    m.add_function(wrap_pyfunction!(response_cap, m)?)?;
+    m.add_function(wrap_pyfunction!(bounded_valid_until_for, m)?)?;
     m.add_function(wrap_pyfunction!(verify_event, m)?)?;
     m.add_function(wrap_pyfunction!(verify_transaction, m)?)?;
     m.add_function(wrap_pyfunction!(decode_event, m)?)?;

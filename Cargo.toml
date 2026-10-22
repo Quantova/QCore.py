@@ -18,3 +18,6 @@ qcore = { path = "../QCore.rs", default-features = false }
 qtv-tx = { git = "https://github.com/Quantova/Quantova-Chain.git", rev = "f183c25c2a56e8ab93758c7552d5c29328942c08" }
 pyo3 = { version = "0.29", features = ["extension-module", "abi3-py38"] }
 qtv-wipe = { git = "https://github.com/Quantova/Quantova-Chain.git", rev = "f183c25c2a56e8ab93758c7552d5c29328942c08" }
+
+[profile.release]
+overflow-checks = true
