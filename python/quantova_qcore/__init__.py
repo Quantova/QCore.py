@@ -82,6 +82,16 @@ from ._native import (
     storage_value_reported,
     check_order_expiry,
     parse_events,
+    verify_finality_in_epoch,
+    header_height,
+    transaction_kind,
+    index_fits_path,
+    testnet_epoch_length,
+    mainnet_epoch_length,
+    testnet_genesis_secs,
+    testnet_blocks_per_sec,
+    response_cap,
+    bounded_valid_until_for,
 )
 
 def generate_seed():
@@ -161,6 +171,11 @@ __all__ = [
     "storage_value_reported",
     "check_order_expiry",
     "parse_events",
+    "verify_finality_in_epoch",
+    "header_height",
+    "transaction_kind",
+    "index_fits_path",
+    "bounded_valid_until_for",
 ]
 
 _MAX_RESPONSE = 8 * 1024 * 1024
@@ -314,12 +329,13 @@ _VALIDITY_BLOCKS = validity_blocks()
 _MAX_PLAUSIBLE_HEAD = 1 << 40
 _U64_MAX = 0xFFFFFFFFFFFFFFFF
 _U128_MAX = (1 << 128) - 1
+_SAFE_INTEGER_LIMIT = 1 << 53
 
 def _gateway_integer(value, label):
     if value is None:
         raise RuntimeError(f"the gateway did not report a {label}")
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > _U64_MAX:
-        raise RuntimeError(f"the gateway reported a {label} that is not a whole number")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value >= _SAFE_INTEGER_LIMIT:
+        raise RuntimeError(f"the gateway reported a {label} that is not a whole number below 2^53")
     return value
 
 def _gateway_decimal(value, label):
@@ -331,6 +347,18 @@ def _gateway_decimal(value, label):
     if parsed > _U128_MAX:
         raise RuntimeError(f"the gateway reported a {label} outside the unsigned 128 bit range")
     return parsed
+
+_SHARED_SESSION = SigningSession([])
+_SHARED_SESSION_GUARD = threading.RLock()
+
+
+def _optional_whole(value, label):
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > _U64_MAX:
+        raise ValueError(f"the {label} must be a whole number int")
+    return value
+
 
 def _valid_until(info):
     head = _gateway_integer(info.get("head_height") if isinstance(info, dict) else None, "head height")
@@ -359,7 +387,7 @@ def _pinned_genesis(value):
 class Network:
     def __init__(self, name, chain_id=None, rpc_url=None, explorer_url=None,
                  denomination=DENOMINATION, decimals=DECIMALS, is_mainnet=False, genesis_hash=None,
-                 roster_commitment=None):
+                 roster_commitment=None, epoch_length=None, genesis_secs=None, blocks_per_sec=None):
         self.name = name
         self.chain_id = chain_id
         self.rpc_url = rpc_url
@@ -369,6 +397,11 @@ class Network:
         self.is_mainnet = is_mainnet is True
         self.genesis_hash = _pinned_genesis(genesis_hash)
         self.roster_commitment = _pinned_genesis(roster_commitment)
+        self.epoch_length = _optional_whole(epoch_length, "epoch length")
+        self.genesis_secs = _optional_whole(genesis_secs, "genesis time")
+        self.blocks_per_sec = _optional_whole(blocks_per_sec, "block rate")
+        if (self.genesis_secs is None) != (self.blocks_per_sec is None):
+            raise ValueError("a network names a genesis time and a block rate together or neither")
 
     @classmethod
     def testnet(cls):
@@ -376,14 +409,18 @@ class Network:
                    rpc_url=testnet_rpc_url(),
                    explorer_url="https://qvmscan.io", is_mainnet=False,
                    genesis_hash=testnet_genesis_hash(),
-                   roster_commitment=testnet_roster_commitment())
+                   roster_commitment=testnet_roster_commitment(),
+                   epoch_length=testnet_epoch_length(),
+                   genesis_secs=testnet_genesis_secs(),
+                   blocks_per_sec=testnet_blocks_per_sec())
 
     @classmethod
     def mainnet(cls):
         return cls(name="mainnet", chain_id="Q-main-net-1", rpc_url=None,
                    explorer_url="https://qvmscan.io", is_mainnet=True,
                    genesis_hash=mainnet_genesis_hash(),
-                   roster_commitment=mainnet_roster_commitment())
+                   roster_commitment=mainnet_roster_commitment(),
+                   epoch_length=mainnet_epoch_length())
 
     @classmethod
     def for_url(cls, base):
@@ -422,8 +459,8 @@ class Client:
         if network_genesis and option_genesis and network_genesis != option_genesis:
             raise ValueError("the genesis_hash argument differs from the genesis pinned in the network, refusing to open the client")
         self._pinned_genesis = network_genesis or option_genesis
-        self._head_floor = None
         self._session = SigningSession([str(a) for a in (address_book or [])])
+        self._nonces = _SHARED_SESSION
 
     def _sender_lock(self, sender):
         return _AccountLock(sender)
@@ -481,6 +518,8 @@ class Client:
         try:
             with _OPENER.open(req, timeout=20) as res:
                 raw = _read_bounded(res)
+                if len(raw) > response_cap(method):
+                    raise RuntimeError(f"the gateway answered {method} with {len(raw)} bytes, above what that answer can need, refusing to read it")
                 if res.status != 200:
                     raise RuntimeError(f"status {res.status}")
                 return _strict_loads(raw)
@@ -519,21 +558,34 @@ class Client:
         for target in targets:
             self._session.remember_address(target)
 
-    def _account_slot(self, sender, expected_nonce):
+    def _account_slot(self, info, sender, expected_nonce):
         acct = self.account(sender)
         reported = _gateway_integer(acct.get("nonce"), "nonce")
-        self._session.release_pending(sender)
-        return self._session.slot(sender, reported, _expected(expected_nonce, "expected nonce"), False)
+        key = f"{info.get('chain_id')}/{sender}"
+        with _SHARED_SESSION_GUARD:
+            nonce = self._nonces.slot(key, reported, _expected(expected_nonce, "expected nonce"), False)
+        return key, nonce
+
+    def _released(self, slots, sign):
+        try:
+            return sign()
+        except Exception:
+            with _SHARED_SESSION_GUARD:
+                for key, slot in slots:
+                    self._nonces.release(key, slot)
+            raise
 
     def _submit_held(self, slots, tx_hex):
-        for key, slot in slots:
-            self._session.signed(key, slot)
+        with _SHARED_SESSION_GUARD:
+            for key, slot in slots:
+                self._nonces.signed(key, slot)
         outcome = self.submit(tx_hex)
         verdict = outcome.get("verdict") if isinstance(outcome, dict) else None
         if verdict not in ("accepted", "rejected"):
             raise RuntimeError(f"unknown verdict {_shown(verdict)}")
-        for key, slot in slots:
-            self._session.outcome(key, slot, verdict == "accepted")
+        with _SHARED_SESSION_GUARD:
+            for key, slot in slots:
+                self._nonces.outcome(key, slot, verdict == "accepted")
         return outcome
 
     def trust_roster(self, genesis_hash, roster):
@@ -567,12 +619,40 @@ class Client:
         self.trust_roster_at(network.genesis_hash, 0, members)
         return True
 
+    def _epoch_length(self):
+        length = getattr(self.network, "epoch_length", None) if self.network is not None else None
+        if not length:
+            name = self.network.name if self.network is not None else "custom"
+            raise RuntimeError(
+                f"no epoch length is pinned for the {name} network, so the validator roster for a height cannot be "
+                "chosen without trusting the gateway; set the network epoch_length"
+            )
+        return length
+
+    def _epoch_of_header(self, header_hex, reported):
+        height = header_height(header_hex)
+        epoch = height // self._epoch_length()
+        if reported is not None and _gateway_integer(reported, "epoch") != epoch:
+            raise RuntimeError(
+                f"the gateway names epoch {_shown(reported)} for height {height}, which lies in epoch {epoch}, "
+                "refusing to choose a roster on its word"
+            )
+        return height, epoch
+
+    def _checked_chain(self, info):
+        name = info.get("chain_id") if isinstance(info, dict) and isinstance(info.get("chain_id"), str) else ""
+        configured = self.network.chain_id if self.network else None
+        if configured and name != configured:
+            raise RuntimeError(f"the gateway reports chain {_shown(name)} but this client is configured for {configured}")
+        return chain_id_from_name(name)
+
     def _roster_for_epoch(self, chain_id, epoch):
         if not self._anchor_pinned_roster():
             return None
         known = [e for e in self._trusted_rosters if e <= epoch]
         if not known:
             raise RuntimeError(f"the trusted roster starts after epoch {epoch}, so that epoch cannot be checked")
+        length = self._epoch_length()
         current = max(known)
         roster = self._trusted_rosters[current]
         while current < epoch:
@@ -580,8 +660,10 @@ class Client:
             answer = self._call("get_roster_proof", json.dumps({"epoch": nxt}), strict=True)
             if not isinstance(answer, dict) or not all(isinstance(answer.get(k), str) for k in ("header_bytes", "certificate", "proof")):
                 raise RuntimeError(f"the gateway gave no roster proof for epoch {nxt}")
+            if answer.get("epoch") != nxt:
+                raise RuntimeError(f"the gateway answered a roster proof for another epoch when asked for epoch {nxt}")
             members = json.dumps(answer.get("members"))
-            verify_next_roster(chain_id, self._trusted_genesis, current, roster, answer["header_bytes"], answer["certificate"], members, answer["proof"])
+            verify_next_roster(chain_id, self._trusted_genesis, length, current, roster, answer["header_bytes"], answer["certificate"], members, answer["proof"])
             current = nxt
             roster = members
             self._trusted_rosters[current] = roster
@@ -593,85 +675,164 @@ class Client:
         finality = self._call("get_finality", json.dumps({"height": height}), strict=True)
         if not isinstance(finality, dict) or not isinstance(finality.get("header_bytes"), str) or not isinstance(finality.get("certificate"), str):
             raise RuntimeError(f"the gateway gave no finality proof for height {height}")
-        return _gateway_integer(finality.get("epoch"), "finality epoch"), finality["header_bytes"], finality["certificate"]
+        at, epoch = self._epoch_of_header(finality["header_bytes"], finality.get("epoch"))
+        if at != height:
+            raise RuntimeError(f"the gateway answered a finality proof for another height when asked for height {height}")
+        return epoch, finality["header_bytes"], finality["certificate"]
 
     def _verify_head(self, info):
         if not self._anchor_pinned_roster():
             reported = info.get("chain_id") if isinstance(info, dict) and isinstance(info.get("chain_id"), str) else ""
-            configured = (self.network.chain_id if self.network is not None else None) or getattr(self, "_expected_chain_id", None) or ""
+            configured = (self.network.chain_id if self.network is not None else None) or ""
             if (self.network is not None and self.network.is_mainnet) or _is_mainnet_chain(reported) or _is_mainnet_chain(configured):
                 raise RuntimeError(
                     "a mainnet client needs a trusted validator roster to check the head it signs against, call trust_roster first"
                 )
-            return
+            return False
         head = _gateway_integer(info.get("head_height") if isinstance(info, dict) else None, "head height")
         name = info.get("chain_id") if isinstance(info.get("chain_id"), str) else ""
         chain_id = chain_id_from_name(name)
         epoch, header, certificate = self._certified_at(head)
         roster = self._roster_for_epoch(chain_id, epoch)
-        verified = _loads(verify_finality(chain_id, self._trusted_genesis, header, certificate, roster))
+        verified = _loads(verify_finality_in_epoch(chain_id, self._trusted_genesis, self._epoch_length(), epoch, header, certificate, roster))
         if int(verified["height"]) != head:
             raise RuntimeError(
                 f"the gateway reports head {head} but its finality proof is for height {verified['height']}, refusing to sign"
             )
+        return True
 
     def verified_account(self, address):
         if not isinstance(address, str):
             raise ValueError("the address must be a string")
         info = self.node_info()
-        name = info.get("chain_id") if isinstance(info.get("chain_id"), str) else ""
-        chain_id = chain_id_from_name(name)
+        chain_id = self._checked_chain(info)
         answer = self._call("get_account_proof", json.dumps({"address": address}), strict=True)
         if not isinstance(answer, dict) or not all(isinstance(answer.get(k), str) for k in ("header_bytes", "certificate", "proof")):
             raise RuntimeError("the gateway gave no account proof")
-        epoch = _gateway_integer(answer.get("epoch"), "account proof epoch")
+        _, epoch = self._epoch_of_header(answer["header_bytes"], answer.get("epoch"))
         roster = self._roster_for_epoch(chain_id, epoch)
         if roster is None:
             raise RuntimeError("a verified balance needs a trusted validator roster, call trust_roster first")
-        verified = _loads(verify_account(chain_id, self._trusted_genesis, epoch, roster, address, answer["header_bytes"], answer["certificate"], answer["proof"]))
+        verified = _loads(verify_account(chain_id, self._trusted_genesis, self._epoch_length(), epoch, roster, address, answer["header_bytes"], answer["certificate"], answer["proof"]))
         return {"address": verified["address"], "height": int(verified["height"]), "exists": verified["exists"] is True,
                 "balance": int(verified["balance"]), "nonce": int(verified["nonce"])}
 
-    def confirm_transaction_trusted(self, tx_id):
+    def _inclusion(self, tx_id, trusted):
         if not isinstance(tx_id, str):
             raise ValueError("the transaction id must be a string")
-        status = self._call("get_transaction", transaction_body(tx_id))
-        if not isinstance(status, dict) or status.get("status") != "finalised":
-            raise RuntimeError("the transaction is not reported as finalised")
-        height = _gateway_integer(status.get("height"), "transaction height")
         info = self.node_info()
-        name = info.get("chain_id") if isinstance(info.get("chain_id"), str) else ""
-        chain_id = chain_id_from_name(name)
-        epoch, _, _ = self._certified_at(height)
-        roster = self._roster_for_epoch(chain_id, epoch)
-        if roster is None:
-            raise RuntimeError("a verified confirmation needs a trusted validator roster, call trust_roster first")
-        return self.confirm_transaction(tx_id, self._trusted_genesis, roster)
+        chain_id = self._checked_chain(info)
+        proof = self._call("get_transaction_proof", json.dumps({"tx_id": tx_id}), strict=True)
+        if not isinstance(proof, dict) or not isinstance(proof.get("leaf"), str):
+            raise RuntimeError("the transaction proof carries no leaf")
+        height = _gateway_integer(proof.get("height"), "proof height")
+        index = _gateway_integer(proof.get("index"), "proof index")
+        steps = json.dumps(proof.get("steps"))
+        epoch, header, certificate = self._certified_at(height)
+        if trusted is not None:
+            genesis, epoch, roster = trusted
+        else:
+            roster = self._roster_for_epoch(chain_id, epoch)
+            if roster is None:
+                raise RuntimeError("a verified confirmation needs a trusted validator roster, call trust_roster first")
+            genesis = self._trusted_genesis
+        verified = _loads(verify_finality_in_epoch(chain_id, genesis, self._epoch_length(), epoch, header, certificate, roster))
+        if int(verified["height"]) != height:
+            raise RuntimeError("the finalized header is not at the height the proof names")
+        if not verify_transaction(verified["transaction_root"], tx_id, proof["leaf"], steps):
+            raise RuntimeError("the transaction is not proven inside the finalized block")
+        if not index_fits_path(index, steps):
+            raise RuntimeError(f"the gateway names position {index} for the transaction, which its verified inclusion path cannot reach")
+        kind = transaction_kind(proof["leaf"])
+        return {"tx_id": tx_id, "height": height, "index": index, "header": verified, "kind": kind,
+                "outcome": "applied" if kind == "transfer" else "included outcome unproven"}
 
-    def _validity(self, info):
-        self._verify_head(info)
+    def confirm_inclusion(self, tx_id, genesis_hash, roster, epoch=0):
+        if not isinstance(genesis_hash, str) or re.fullmatch(r"[0-9a-fA-F]{64}", genesis_hash) is None:
+            raise ValueError("the genesis hash you trust must be 64 hex characters")
+        if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0:
+            raise ValueError("the roster epoch must be a whole number")
+        roster_json = roster if isinstance(roster, str) else json.dumps(roster)
+        return self._inclusion(tx_id, (genesis_hash.lower(), epoch, roster_json))
+
+    def confirm_inclusion_trusted(self, tx_id):
+        return self._inclusion(tx_id, None)
+
+    @staticmethod
+    def _settled(confirmed):
+        if confirmed["kind"] != "transfer":
+            raise RuntimeError(
+                f"{confirmed['tx_id']} is a contract call, which the chain includes and charges even when it reverts, so "
+                "inclusion does not prove it ran; prove the event it emits with confirm_call_event, or use confirm_inclusion "
+                "for inclusion alone"
+            )
+        return confirmed
+
+    def confirm_transaction(self, tx_id, genesis_hash, roster, epoch=0):
+        return self._settled(self.confirm_inclusion(tx_id, genesis_hash, roster, epoch))
+
+    def confirm_transaction_trusted(self, tx_id):
+        return self._settled(self.confirm_inclusion_trusted(tx_id))
+
+    def confirm_call_event(self, tx_id, contract, selector_hex, data_hex=None):
+        if not isinstance(contract, str) or not isinstance(selector_hex, str):
+            raise ValueError("the contract and selector must be strings")
+        if data_hex is not None and not isinstance(data_hex, str):
+            raise ValueError("the event data must be a hex string")
+        confirmed = self.confirm_inclusion_trusted(tx_id)
+        height = confirmed["height"]
+        listed = json.loads(parse_events(json.dumps(self.events(height))))
+        selector = selector_hex.lower()
+        data = data_hex.lower() if data_hex is not None else None
+        for position, event in enumerate(listed):
+            if not same_address(event["contract"], contract) or event["selector"] != selector or (data is not None and event["data"] != data):
+                continue
+            answer = self._call("get_event_proof", json.dumps({"height": height, "index": position}), strict=True)
+            if not isinstance(answer, dict) or not isinstance(answer.get("leaf"), str):
+                continue
+            if not verify_event(confirmed["header"]["event_root"], answer["leaf"], json.dumps(answer.get("steps"))):
+                continue
+            proven = json.loads(decode_event(answer["leaf"]))
+            if same_address(proven["contract"], contract) and proven["selector"] == selector and (data is None or proven["data"] == data):
+                return dict(confirmed, outcome="event proven", event_index=position)
+        raise RuntimeError(
+            f"the block that holds {tx_id} carries no proven event of that contract and selector, so the call is not shown to have run"
+        )
+
+    def _validity(self, info, verified=False):
         head = _gateway_integer(info.get("head_height") if isinstance(info, dict) else None, "head height")
         chain = info.get("chain_id") if isinstance(info.get("chain_id"), str) else ""
-        now = time.monotonic()
-        wall = int(time.time())
-        floor = self._head_floor
-        age = int(now - floor[1]) if floor is not None and now > floor[1] else 0
-        try:
-            until = bounded_valid_until(chain, head, max(wall, 0), floor[0] if floor else None, age)
-        except ValueError as err:
-            raise RuntimeError(str(err))
-        if floor is None or head > floor[0]:
-            self._head_floor = (head, now)
+        if not verified and ((self.network is not None and self.network.is_mainnet) or _is_public_chain(chain)):
+            raise RuntimeError(
+                f"the head of the public chain {_shown(chain)} must be verified against a trusted validator roster before signing, "
+                "pin the network roster commitment or call trust_roster"
+            )
+        genesis_secs = getattr(self.network, "genesis_secs", None) if self.network is not None else None
+        blocks_per_sec = getattr(self.network, "blocks_per_sec", None) if self.network is not None else None
+        if genesis_secs is None and chain == testnet_chain_name():
+            genesis_secs, blocks_per_sec = testnet_genesis_secs(), testnet_blocks_per_sec()
+        wall = max(int(time.time()), 0)
+        with _SHARED_SESSION_GUARD:
+            floor = self._nonces.head_floor(chain)
+            age = wall - floor[1] if floor is not None and wall > floor[1] else 0
+            try:
+                until = bounded_valid_until_for(genesis_secs, blocks_per_sec, verified is True, head, wall, floor[0] if floor else None, age)
+            except ValueError as err:
+                raise RuntimeError(str(err))
+            self._nonces.note_head(chain, head, wall)
         genesis = info.get("genesis_hash") if isinstance(info, dict) else None
         if not isinstance(genesis, str) or re.fullmatch(r"[0-9a-fA-F]{64}", genesis) is None:
             raise RuntimeError("the gateway reports a genesis hash that is not 32 bytes of hex, refusing to sign")
         reported = genesis.lower()
+        trusted = getattr(self, "_trusted_genesis", None)
+        if trusted is not None and trusted != reported:
+            raise RuntimeError("the gateway reports a genesis hash other than the one whose validator roster this client trusts, refusing to sign")
         if self._pinned_genesis is not None:
             if self._pinned_genesis != reported:
                 raise RuntimeError("the gateway reports a genesis hash other than the one pinned for this network, refusing to sign")
         elif _is_public_chain(chain):
             raise RuntimeError(f"no genesis hash is pinned for the public chain {_shown(chain)}, pin the network genesis before signing")
-        return until, head, reported
+        return until, head, trusted or reported
 
     def _call_fee(self, info, meter, ceiling, max_fee, deploy=False):
         transfer_fee = _transfer_fee(info)
@@ -686,43 +847,27 @@ class Client:
 
     def transaction(self, tx_id):
         status = self._call("get_transaction", transaction_body(tx_id))
-        if isinstance(status, dict) and status.get("status") == "finalised" and self._anchor_pinned_roster():
-            self.confirm_transaction_trusted(tx_id)
-        return status
+        if not isinstance(status, dict) or status.get("status") != "finalised":
+            return status
+        if self._anchor_pinned_roster():
+            confirmed = self.confirm_inclusion_trusted(tx_id)
+            return dict(status, height=confirmed["height"], block=confirmed["header"]["hash"], verified=True)
+        configured_mainnet = (self.network is not None and self.network.is_mainnet) or _is_mainnet_chain((self.network.chain_id if self.network else None) or "")
+        if configured_mainnet or _is_mainnet_chain(str(self.node_info().get("chain_id") or "")):
+            raise RuntimeError(
+                "a mainnet transaction status needs a trusted validator roster, the gateway's word alone is not proof of finality, call trust_roster first"
+            )
+        return dict(status, status="unverified", reported_status="finalised", verified=False)
 
     def save_session(self):
-        return self._session.export_state()
+        with _SHARED_SESSION_GUARD:
+            return self._nonces.export_state()
 
     def restore_session(self, state):
         if not isinstance(state, str):
             raise ValueError("the saved session must be the string save_session returned")
-        self._session.import_state(state)
-
-    def confirm_transaction(self, tx_id, genesis_hash, roster):
-        if not isinstance(tx_id, str):
-            raise ValueError("the transaction id must be a string")
-        if not isinstance(genesis_hash, str) or re.fullmatch(r"[0-9a-fA-F]{64}", genesis_hash) is None:
-            raise ValueError("the genesis hash you trust must be 64 hex characters")
-        roster_json = roster if isinstance(roster, str) else json.dumps(roster)
-        info = self.node_info()
-        name = info.get("chain_id") if isinstance(info, dict) and isinstance(info.get("chain_id"), str) else ""
-        configured = self.network.chain_id if self.network else None
-        if configured and name != configured:
-            raise RuntimeError(
-                f"the gateway reports chain {_shown(name)} but this client is configured for {configured}"
-            )
-        chain_id = chain_id_from_name(name)
-        proof = self._call("get_transaction_proof", json.dumps({"tx_id": tx_id}), strict=True)
-        height = _gateway_integer(proof.get("height"), "proof height")
-        finality = self._call("get_finality", json.dumps({"height": height}), strict=True)
-        verified = _loads(
-            verify_finality(chain_id, genesis_hash.lower(), str(finality.get("header_bytes")), str(finality.get("certificate")), roster_json)
-        )
-        if int(verified["height"]) != height:
-            raise RuntimeError("the finalized header is not at the height the proof names")
-        if not verify_transaction(verified["transaction_root"], tx_id, str(proof.get("leaf")), json.dumps(proof.get("steps"))):
-            raise RuntimeError("the transaction is not proven inside the finalized block")
-        return {"tx_id": tx_id, "height": height, "index": _gateway_integer(proof.get("index"), "proof index"), "header": verified}
+        with _SHARED_SESSION_GUARD:
+            self._nonces.import_state(state)
 
     def block(self, height):
         return self._call("get_block", block_by_height_body(height))
@@ -778,13 +923,14 @@ class Client:
                 raise ValueError(
                     f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
                 )
-            until, head, genesis = self._validity(info)
-            nonce = self._account_slot(sender, expected_nonce)
-            signed = _loads(
+            verified = self._verify_head(info)
+            until, head, genesis = self._validity(info, verified)
+            key, nonce = self._account_slot(info, sender, expected_nonce)
+            signed = self._released([(key, nonce)], lambda: _loads(
                 sign_transfer(seed, index, to, _whole(amount, "the amount must be an integer number of Quon"), nonce, fee, chain_id, until, head, genesis)
-            )
+            ))
             self._remember_targets([to])
-            outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
+            outcome = self._submit_held([(key, nonce)], signed["tx_hex"])
             return signed, outcome
 
     def register(self, seed, index, max_fee, expected_nonce=None):
@@ -800,10 +946,11 @@ class Client:
                 raise ValueError(
                     f"the gateway fee {fee} is above the maximum you allowed {max_fee}, refusing to sign"
                 )
-            until, head, genesis = self._validity(info)
-            nonce = self._account_slot(sender, expected_nonce)
-            signed = _loads(sign_register(seed, index, nonce, fee, chain_id, until, head, genesis))
-            outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
+            verified = self._verify_head(info)
+            until, head, genesis = self._validity(info, verified)
+            key, nonce = self._account_slot(info, sender, expected_nonce)
+            signed = self._released([(key, nonce)], lambda: _loads(sign_register(seed, index, nonce, fee, chain_id, until, head, genesis)))
+            outcome = self._submit_held([(key, nonce)], signed["tx_hex"])
             return signed, outcome
 
     def _signed_call(self, seed, index, targets, meter_limit, max_fee, expected_nonce, sign):
@@ -815,13 +962,14 @@ class Client:
             info = self.node_info()
             self._guard_mainnet()
             chain_id = self._signing_chain_id(info)
-            deploy = bool(targets) and targets[0] == vm_deploy_address()
+            deploy = bool(targets) and same_address(targets[0], vm_deploy_address())
             transfer_fee, fee = self._call_fee(info, meter, ceiling, max_fee, deploy)
-            until, head, genesis = self._validity(info)
-            nonce = self._account_slot(sender, expected_nonce)
-            signed = _loads(sign(nonce, meter, fee, chain_id, until, transfer_fee, head, genesis))
+            verified = self._verify_head(info)
+            until, head, genesis = self._validity(info, verified)
+            key, nonce = self._account_slot(info, sender, expected_nonce)
+            signed = self._released([(key, nonce)], lambda: _loads(sign(nonce, meter, fee, chain_id, until, transfer_fee, head, genesis)))
             self._remember_targets(targets)
-            outcome = self._submit_held([(sender, nonce)], signed["tx_hex"])
+            outcome = self._submit_held([(key, nonce)], signed["tx_hex"])
             return signed, outcome
 
     def call(self, seed, index, target, args_hex, meter_limit, max_fee, expected_nonce=None):
@@ -862,3 +1010,51 @@ class Client:
                 chain_id, until, transfer_fee, head, genesis,
             ),
         )
+
+    def call_typed_order(self, caller_seed, caller_index, contract, selector_hex, order_spec, owner_seed, owner_index,
+                         meter_limit, max_fee, expected_order_nonce=None, expected_nonce=None):
+        if not valid_address(contract):
+            raise ValueError("the contract is not a Q1 address")
+        if not isinstance(order_spec, dict) or not isinstance(order_spec.get("layout_hash"), str):
+            raise ValueError("the order spec needs the layout hash the compiler emits for this entry")
+        expiry = _whole(order_spec.get("expiry"), "the order expiry must be a whole number")
+        check_order_expiry(expiry, int(time.time()))
+        ceiling = _fee_ceiling(max_fee)
+        meter = _whole(meter_limit, "the meter limit must be a whole number")
+        caller = address(caller_seed, caller_index)
+        with self._sender_lock(caller):
+            self._vet(caller, [contract])
+            info = self.node_info()
+            self._guard_mainnet()
+            chain_id = self._signing_chain_id(info)
+            transfer_fee, fee = self._call_fee(info, meter, ceiling, max_fee, False)
+            verified = self._verify_head(info)
+            until, head, genesis = self._validity(info, verified)
+            signer = order_signer(owner_seed, owner_index)
+            order_key = f"{info.get('chain_id')}/{contract.upper()}/{signer}"
+            reported = self.contract_nonce(contract, signer)
+            with _SHARED_SESSION_GUARD:
+                nonce = self._nonces.slot(order_key, reported, _expected(expected_order_nonce, "expected order nonce"), True)
+            slots = [(order_key, nonce)]
+            try:
+                order = _loads(build_typed_order_call(
+                    chain_id, contract, selector_hex, order_spec["layout_hash"],
+                    _whole(order_spec.get("scheme_off"), "the scheme offset must be a whole number"),
+                    _whole(order_spec.get("ptr_off"), "the pointer offset must be a whole number"),
+                    _whole(order_spec.get("expiry_off"), "the expiry offset must be a whole number"),
+                    _whole(order_spec.get("region_off", 0), "the region offset must be a whole number"),
+                    json.dumps(order_spec.get("fields") or []), owner_seed, owner_index, nonce, expiry,
+                    resign=expected_order_nonce is not None,
+                ))
+                key, account_nonce = self._account_slot(info, caller, expected_nonce)
+                slots.append((key, account_nonce))
+                signed = _loads(sign_call(caller_seed, caller_index, contract, order["call_args"], account_nonce, meter, fee,
+                                          chain_id, until, transfer_fee, head, genesis))
+            except Exception:
+                with _SHARED_SESSION_GUARD:
+                    for slot_key, slot in slots:
+                        self._nonces.release(slot_key, slot)
+                raise
+            self._remember_targets([contract])
+            outcome = self._submit_held(slots, signed["tx_hex"])
+            return order, signed, outcome

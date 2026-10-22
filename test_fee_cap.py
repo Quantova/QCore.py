@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 try:
@@ -44,6 +45,10 @@ class Handler(BaseHTTPRequestHandler):
         else:
             send({"error": "unknown_method", "message": self.path}, 404)
 
+def clocked(port):
+    url = f"http://127.0.0.1:{port}"
+    return qcore.Client(url, network=qcore.Network(name="custom", rpc_url=url, genesis_secs=int(time.time()) - 1000, blocks_per_sec=1))
+
 def fail(message):
     print("FAIL " + message)
     sys.exit(1)
@@ -51,7 +56,7 @@ def fail(message):
 def main():
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    client = qcore.Client(f"http://127.0.0.1:{server.server_address[1]}")
+    client = clocked(server.server_address[1])
     seed = bytearray.fromhex("0b" * 32)
     to = qcore.address(seed, 1)
 
