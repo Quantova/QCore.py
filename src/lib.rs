@@ -741,10 +741,11 @@ fn signed_orders() -> std::sync::MutexGuard<'static, std::collections::HashMap<S
 }
 
 #[pyfunction]
-#[pyo3(signature = (chain_id, contract, selector_hex, layout_hash_hex, scheme_off, ptr_off, expiry_off, region_off, fields_json, owner_seed_bytes, owner_index, nonce, expiry, resign = false))]
+#[pyo3(signature = (chain_id, genesis_hex, contract, selector_hex, layout_hash_hex, scheme_off, ptr_off, expiry_off, region_off, fields_json, owner_seed_bytes, owner_index, nonce, expiry, resign = false))]
 #[allow(clippy::too_many_arguments)]
 fn build_typed_order_call(
     chain_id: u64,
+    genesis_hex: &str,
     contract: &str,
     selector_hex: &str,
     layout_hash_hex: &str,
@@ -770,7 +771,11 @@ fn build_typed_order_call(
     }
     let canonical = contract.to_ascii_uppercase();
     let signer = qcore::json::to_hex(&qcore::contract::order_signer(&owner, owner_index));
-    let order_key = format!("{chain_id}/{canonical}/{signer}/{nonce}");
+    let genesis = genesis(genesis_hex)?;
+    let order_key = format!(
+        "{chain_id}/{}/{canonical}/{signer}/{nonce}",
+        qcore::json::to_hex(&genesis)
+    );
     let selector: [u8; 4] = qcore::json::from_hex(selector_hex)
         .map_err(PyValueError::new_err)?
         .try_into()
@@ -780,6 +785,7 @@ fn build_typed_order_call(
     let fields = parse_typed_fields(fields_json)?;
     let order = qcore::contract::build_order_from_typed(
         chain_id,
+        &genesis,
         contract,
         selector,
         &layout_hash,

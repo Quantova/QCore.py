@@ -1038,7 +1038,7 @@ class Client:
             slots = [(order_key, nonce)]
             try:
                 order = _loads(build_typed_order_call(
-                    chain_id, contract, selector_hex, order_spec["layout_hash"],
+                    chain_id, genesis, contract, selector_hex, order_spec["layout_hash"],
                     _whole(order_spec.get("scheme_off"), "the scheme offset must be a whole number"),
                     _whole(order_spec.get("ptr_off"), "the pointer offset must be a whole number"),
                     _whole(order_spec.get("expiry_off"), "the expiry offset must be a whole number"),
