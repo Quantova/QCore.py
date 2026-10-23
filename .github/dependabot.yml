@@ -2,17 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0 OR MIT
 version: 2
 updates:
-  - package-ecosystem: cargo
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 2
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-    groups:
-      cargo:
-        patterns: ["*"]
   - package-ecosystem: pip
     directory: /
     schedule:
