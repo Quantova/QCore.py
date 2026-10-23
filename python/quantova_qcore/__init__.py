@@ -807,6 +807,18 @@ class Client:
                 f"the head of the public chain {_shown(chain)} must be verified against a trusted validator roster before signing, "
                 "pin the network roster commitment or call trust_roster"
             )
+        genesis = info.get("genesis_hash") if isinstance(info, dict) else None
+        if not isinstance(genesis, str) or re.fullmatch(r"[0-9a-fA-F]{64}", genesis) is None:
+            raise RuntimeError("the gateway reports a genesis hash that is not 32 bytes of hex, refusing to sign")
+        reported = genesis.lower()
+        trusted = getattr(self, "_trusted_genesis", None)
+        if trusted is not None and trusted != reported:
+            raise RuntimeError("the gateway reports a genesis hash other than the one whose validator roster this client trusts, refusing to sign")
+        if self._pinned_genesis is not None:
+            if self._pinned_genesis != reported:
+                raise RuntimeError("the gateway reports a genesis hash other than the one pinned for this network, refusing to sign")
+        elif _is_public_chain(chain):
+            raise RuntimeError(f"no genesis hash is pinned for the public chain {_shown(chain)}, pin the network genesis before signing")
         genesis_secs = getattr(self.network, "genesis_secs", None) if self.network is not None else None
         blocks_per_sec = getattr(self.network, "blocks_per_sec", None) if self.network is not None else None
         if genesis_secs is None and chain == testnet_chain_name():
@@ -820,18 +832,6 @@ class Client:
             except ValueError as err:
                 raise RuntimeError(str(err))
             self._nonces.note_head(chain, head, wall)
-        genesis = info.get("genesis_hash") if isinstance(info, dict) else None
-        if not isinstance(genesis, str) or re.fullmatch(r"[0-9a-fA-F]{64}", genesis) is None:
-            raise RuntimeError("the gateway reports a genesis hash that is not 32 bytes of hex, refusing to sign")
-        reported = genesis.lower()
-        trusted = getattr(self, "_trusted_genesis", None)
-        if trusted is not None and trusted != reported:
-            raise RuntimeError("the gateway reports a genesis hash other than the one whose validator roster this client trusts, refusing to sign")
-        if self._pinned_genesis is not None:
-            if self._pinned_genesis != reported:
-                raise RuntimeError("the gateway reports a genesis hash other than the one pinned for this network, refusing to sign")
-        elif _is_public_chain(chain):
-            raise RuntimeError(f"no genesis hash is pinned for the public chain {_shown(chain)}, pin the network genesis before signing")
         return until, head, trusted or reported
 
     def _call_fee(self, info, meter, ceiling, max_fee, deploy=False):
