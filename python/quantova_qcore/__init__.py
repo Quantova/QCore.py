@@ -851,6 +851,18 @@ class Client:
             return status
         if self._anchor_pinned_roster():
             confirmed = self.confirm_inclusion_trusted(tx_id)
+            if confirmed["kind"] != "transfer":
+                return dict(
+                    status,
+                    status="included",
+                    reported_status="finalised",
+                    kind="call",
+                    outcome="unproven",
+                    height=confirmed["height"],
+                    block=confirmed["header"]["hash"],
+                    verified=False,
+                    inclusion_verified=True,
+                )
             return dict(status, height=confirmed["height"], block=confirmed["header"]["hash"], verified=True)
         configured_mainnet = (self.network is not None and self.network.is_mainnet) or _is_mainnet_chain((self.network.chain_id if self.network else None) or "")
         if configured_mainnet or _is_mainnet_chain(str(self.node_info().get("chain_id") or "")):
