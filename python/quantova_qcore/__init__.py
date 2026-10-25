@@ -793,6 +793,8 @@ class Client:
             if not verify_event(confirmed["header"]["event_root"], answer["leaf"], json.dumps(answer.get("steps"))):
                 continue
             proven = json.loads(decode_event(answer["leaf"]))
+            if proven.get("tx") != tx_id:
+                continue
             if same_address(proven["contract"], contract) and proven["selector"] == selector and (data is None or proven["data"] == data):
                 return dict(confirmed, outcome="event proven", event_index=position)
         raise RuntimeError(
