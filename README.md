@@ -66,7 +66,7 @@ MAX_FEE = 1000  # Quon; the cap you enforce, not whatever the gateway reports
 info = client.node_info()
 
 # A fresh account holds nothing, so fund it first. On the public testnet a POST to
-# https://q-test-net-01.quantova.org/faucet/api/claim with {"address": me, "amount": 10}
+# https://q-test-net-0001.quantova.org/faucet/api/claim with {"address": me, "amount": 10}
 # sends 10 TQTOV, and the payment is itself a transaction so give it a few seconds.
 #
 # A fresh account funded by a transfer arrives with a balance but no key on the
