@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "qcore-python"
-version = "0.11.8"
+version = "0.11.9"
 dependencies = [
  "pyo3",
  "qcore",
