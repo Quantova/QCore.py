@@ -101,7 +101,8 @@ def _is_mainnet_chain(name):
     return name.startswith("Q-main-net-")
 
 def _is_public_chain(name):
-    return name.startswith("Q-test-net-") or _is_mainnet_chain(name)
+    return (name == testnet_chain_name() or name.startswith("Q-test-net-")
+            or name.startswith("Q-TestNet") or _is_mainnet_chain(name))
 
 __all__ = [
     "Client",
