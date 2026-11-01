@@ -536,6 +536,9 @@ fn sign_asset_call(
     head: u64,
     genesis_hex: &str,
 ) -> PyResult<String> {
+    if !qcore::valid_address(target) {
+        return Err(PyValueError::new_err("the target is not a Q1 address"));
+    }
     let args = qcore::json::from_hex(args_hex).map_err(PyValueError::new_err)?;
     let signed = qcore::sign_asset_call(
         &*seed(seed_bytes)?,
