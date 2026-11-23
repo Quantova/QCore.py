@@ -85,6 +85,7 @@ jobs:
           python test_sign_validate.py
           python test_fee_cap.py
           python test_network.py
+          python test_roster_anchor.py
           python test_nonce_validate.py
           python test_payable.py
           python test_register.py
